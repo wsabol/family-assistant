@@ -1,0 +1,54 @@
+---
+description: TypeScript patterns, DB layer, and integration conventions
+globs: src/**/*.ts,tests/**/*.ts
+alwaysApply: false
+---
+
+# TypeScript Conventions
+
+## Module system
+
+- `rootDir: src`, imports use `.js` extension (NodeNext).
+- Domain types in `src/domain/`; DB row mapping in repository files.
+
+## Data access
+
+- Open DB per CLI command: `openDatabase` → `runMigrations` → work → `db.close()`.
+- Repositories: `MessagesRepository`, `ProposedActionsRepository`, `CalendarLinksRepository`.
+- Queue claiming uses SQLite transactions (`claimNextQueued`, `claimApproved`).
+- Message dedupe: unique index on `gmail_message_id`.
+
+## Proposed action statuses
+
+`awaiting_review` → `approved` | `rejected` | `superseded`
+`approved` → `writing` → `completed` | `failed`
+
+- `original_payload_json`: never overwrite (AI audit).
+- `approved_payload_json`: set on approve/save from review UI or CLI.
+
+## AI extraction
+
+- Schema: `extractionResultSchema` in `src/ai/schemas.ts`; invalid output → message `failed`, error in `last_error`.
+- Prompt version constant: `PROMPT_VERSION` in schemas; stored on message as `prompt_version`.
+- Relative dates resolved using email `received_at` + family timezone in prompt text.
+
+## Google OAuth
+
+- `loadSavedCredentials()` returns `null` if token path env unset or file missing (no throw).
+- Gmail scopes: readonly + modify (labels). Calendar: `calendar.events`.
+- `isConfigured()` for non-empty env string checks.
+
+## Logging & errors
+
+- Use `createLogger(env, component)` — avoid raw `console.log` in pipeline code (CLI user output OK).
+- Throw `ConfigError` from config loader; surface clear messages in CLI.
+
+## Tests
+
+- Vitest; unit tests in `tests/unit/`.
+- Doctor tests: delete `GOOGLE_TOKEN_PATH` from env to avoid live API calls.
+- Grade boundary tests in `tests/unit/grade.test.ts`.
+
+## Scripts outside `src/`
+
+- `scripts/generate-launchd.mjs`, `scripts/load-launchd.mjs` — plain Node, not compiled.

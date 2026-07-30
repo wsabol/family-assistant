@@ -1,6 +1,6 @@
 # Family Assistant
 
-Local family executive assistant that watches Gmail for school-related messages, extracts proposed calendar actions with AI, requires human review, and writes approved events to Google Calendar (syncing to Hearth Display via Google Calendar).
+Local family executive assistant that watches Gmail for school-related messages, extracts proposed calendar actions with AI, requires human review, and writes approved events to Google Calendar.
 
 ## Requirements
 
@@ -24,7 +24,9 @@ cp .env.example .env
 cp config/family.example.json config/family.json
 ```
 
-3. Edit `config/family.json` with your timezone, Gmail label, children, and school calendar ID.
+3. Edit `config/family.json` with your timezone, Gmail label, children (`name`, `school`, `startedKindergarten`), and school calendar ID.
+
+   Grade is computed automatically from `startedKindergarten` (fall year the child started kindergarten). School year rolls after May; see `src/family/grade.ts`.
 
 4. Configure `.env` with Google OAuth credentials, token paths, and `AI_API_KEY`.
 
@@ -82,6 +84,8 @@ npx family-assistant watch
 | `status` | Show queue status |
 | `doctor` | Health checks |
 | `migrate` | Apply database migrations |
+| `launchd:generate` | Build `launchd/` plists from templates |
+| `launchd:load` | Generate, copy to LaunchAgents, `launchctl bootstrap` |
 
 ## Reprocessing
 
@@ -112,6 +116,19 @@ Suggested schedule: watcher/work/calendar-writer every 5 minutes; digest daily a
 - Digests: `DIGEST_DIR`
 
 Back up the database and token files regularly. They are not committed to git.
+
+## Family config
+
+`config/family.example.json` shows the shape. Per child:
+
+| Field | Description |
+|-------|-------------|
+| `name` | Child name |
+| `aliases` | Optional nicknames for AI matching |
+| `school` | School name |
+| `startedKindergarten` | Calendar year they started kindergarten (e.g. `2020`) |
+
+Grade is derived at runtime — do not add a `grade` field.
 
 ## Development
 

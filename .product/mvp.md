@@ -7,7 +7,7 @@ Build a local family executive-assistant system that:
 1. Watches Gmail for school-related messages.
 2. Extracts calendar events, deadlines, reminders, and actionable items.
 3. Presents proposed actions for human review.
-4. Writes approved events to Google Calendar, which replicates to the Hearth Display
+4. Writes approved events to Google Calendar
 5. Maintains a complete audit trail and prevents duplicates.
 
 The initial release should prioritize reliability, transparency, and reversibility over full autonomy.
@@ -113,9 +113,6 @@ Calendar Writer
   |
   v
 Google Calendar
-  |
-  v
-Hearth Display
 ```
 
 ### Components
@@ -451,7 +448,7 @@ Example:
       "name": "Child 1",
       "aliases": [],
       "school": "School Name",
-      "grade": "Grade"
+      "startedKindergarten": 2020
     }
   ],
   "defaultEventDurationMinutes": 60,
@@ -924,11 +921,10 @@ The MVP is complete when this full workflow succeeds reliably:
 3. The worker extracts zero or more valid proposed actions.
 4. The user reviews and approves an action.
 5. The calendar writer creates exactly one Google Calendar event.
-6. The event appears on the Hearth display.
-7. The event includes a traceable source reference.
-8. Re-running any component does not create duplicates.
-9. Failures are visible and retryable.
-10. The system restarts automatically after a Mac reboot.
+6. The event includes a traceable source reference.
+7. Re-running any component does not create duplicates.
+8. Failures are visible and retryable.
+9. The system restarts automatically after a Mac reboot.
 
 ---
 

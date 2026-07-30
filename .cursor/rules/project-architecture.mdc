@@ -1,0 +1,64 @@
+---
+description: Family Assistant pipeline, stack, and component boundaries
+alwaysApply: true
+---
+
+# Family Assistant Architecture
+
+Local TypeScript/Node app: Gmail → SQLite queue → OpenAI extraction → human review → Google Calendar.
+
+## Stack
+
+- **Runtime**: Node 20+, ESM (`"type": "module"`), TypeScript → `dist/`
+- **CLI**: Commander (`src/cli/index.ts`), bin `family-assistant`
+- **DB**: SQLite via `better-sqlite3`, WAL mode, versioned SQL in `migrations/`
+- **Validation**: Zod (`src/config.ts`, `src/ai/schemas.ts`)
+- **Logging**: Pino per-component files in `LOG_DIR` (`src/logger.ts`)
+- **Gmail/Calendar**: `googleapis`, separate OAuth token files (`GOOGLE_TOKEN_PATH`, `GOOGLE_CALENDAR_TOKEN_PATH`)
+- **AI**: OpenAI structured JSON (`src/ai/client.ts`), prompt file `config/prompts/school-email-v1.txt`
+- **Review UI**: Express, server-rendered HTML, localhost only (`src/review/`)
+
+## Pipeline (strict boundaries)
+
+```
+watch (gmail/) → messages queued
+work (ai/)     → proposed_actions awaiting_review  [never touches Calendar]
+review         → approve/reject, approved_payload_json preserved separately from original_payload_json
+write-calendar (calendar/) → calendar_links       [only status=approved, skip if link exists]
+```
+
+- **Watcher** does not call AI or Calendar.
+- **Worker** does not write Calendar.
+- **Calendar writer** only processes explicitly approved actions; idempotent via `calendar_links.proposed_action_id` unique index.
+
+## Directory map
+
+| Path | Role |
+|------|------|
+| `src/gmail/` | Poll, normalize, ingest, Gmail labels `FamilyAssistant/*` |
+| `src/ai/` | Queue claim, extraction, reprocess |
+| `src/review/` | Local web UI |
+| `src/calendar/` | Event mapping + Google Calendar insert |
+| `src/db/repositories/` | SQLite access; map snake_case rows → domain types |
+| `src/domain/` | Message, ProposedAction types + status enums |
+| `src/family/` | Grade computation from `startedKindergarten` |
+| `src/google/oauth.ts` | Shared OAuth client; interactive auth on `OAUTH_REDIRECT_PORT` |
+| `launchd-template/` | Plist templates with `REPLACE_WITH_PROJECT` |
+| `scripts/` | `generate-launchd.mjs`, `load-launchd.mjs` |
+
+## Config split
+
+- **`.env`**: paths, secrets, batch limits (see `.env.example`). Gitignored.
+- **`config/family.json`**: timezone, children, calendar ID, Gmail label. Gitignored; template in `config/family.example.json`.
+
+## Key workflows
+
+- **Reprocess**: `proposed_actions` with `awaiting_review` or `approved` → `superseded`; message reset to `queued`.
+- **Stale recovery**: `STALE_PROCESSING_MINUTES` resets stuck `processing` messages and `writing` actions.
+- **launchd**: `npm run launchd:generate` → `launchd/`; `npm run launchd:load` copies to `~/Library/LaunchAgents` and `launchctl bootstrap`.
+
+## Not in MVP
+
+No email send, no auto-approve, no autonomous calendar edits. Milestone 7 (fixture evaluation corpus) still pending.
+
+Full product spec: `.product/mvp.md`.

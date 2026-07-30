@@ -1,0 +1,44 @@
+---
+description: Family JSON config and computed grade from startedKindergarten
+globs: config/**,src/family/**,src/config.ts,src/ai/prompts.ts
+alwaysApply: false
+---
+
+# Family Config & Grade
+
+## `config/family.json` (not committed)
+
+Validated by `familyConfigSchema` in `src/config.ts`.
+
+Required per child:
+- `name`, `school`, `startedKindergarten` (integer fall year K started)
+- `aliases` optional array
+
+Do **not** store static `grade` in config. Grade is computed at runtime.
+
+## Grade logic (`src/family/grade.ts`)
+
+Uses `family.timezone` for local year/month via `Intl.DateTimeFormat`.
+
+**School year boundary (May rule):**
+- Jan–May → school year started previous fall (`schoolYearStart = year - 1`)
+- Jun–Dec → current year's fall start (`schoolYearStart = year`)
+
+**Grade number:** `schoolYearStart - startedKindergarten`
+- `0` = Kindergarten, `1` = 1st grade, etc.
+
+Examples (started K in 2020):
+- Feb 2026 → 5th grade
+- Jul 2026 → 6th grade
+
+## Consumers
+
+- `buildFamilyContext()` in `src/ai/prompts.ts` injects computed grade + `startedKindergarten` into AI user context.
+- Use `getChildGradeDisplay()` / `computeGradeNumber()` for any new feature needing grade; never read grade from JSON.
+
+## Adding child fields
+
+1. Update Zod `childSchema` in `src/config.ts`
+2. Update `config/family.example.json`
+3. Update `buildFamilyContext()` if AI needs the field
+4. Add tests in `tests/unit/config.test.ts` or `tests/unit/grade.test.ts`
