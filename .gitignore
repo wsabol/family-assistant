@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+data/
+*.log
+config/family.json
+.DS_Store
+launchd/

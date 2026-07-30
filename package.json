@@ -1,0 +1,43 @@
+{
+  "name": "family-assistant",
+  "version": "0.1.0",
+  "description": "Local family executive assistant for school email automation",
+  "type": "module",
+  "bin": {
+    "family-assistant": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli/index.ts",
+    "doctor": "tsx src/cli/index.ts doctor",
+    "migrate": "tsx src/cli/index.ts migrate",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "launchd:generate": "node scripts/generate-launchd.mjs",
+    "launchd:load": "npm run launchd:generate && node scripts/load-launchd.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.9.1",
+    "commander": "^13.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "googleapis": "^173.0.0",
+    "html-to-text": "^10.0.0",
+    "openai": "^7.1.0",
+    "pino": "^9.6.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.6",
+    "@types/html-to-text": "^9.0.4",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  }
+}

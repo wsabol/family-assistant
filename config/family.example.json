@@ -1,0 +1,16 @@
+{
+  "timezone": "America/Chicago",
+  "schoolCalendarId": "replace-me",
+  "gmailLabel": "School",
+  "children": [
+    {
+      "name": "Child 1",
+      "aliases": [],
+      "school": "School Name",
+      "grade": "Grade"
+    }
+  ],
+  "defaultEventDurationMinutes": 60,
+  "defaultAllDayReminderMinutes": [1080],
+  "defaultTimedEventReminderMinutes": [60]
+}
