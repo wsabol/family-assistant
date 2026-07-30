@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 
 import { google } from "googleapis";
 
-import { type EnvConfig, resolvePath } from "../config.js";
+import { type EnvConfig, isConfigured, resolvePath } from "../config.js";
 
 export type GoogleService = "gmail" | "calendar";
 export type GoogleOAuth2Client = InstanceType<typeof google.auth.OAuth2>;
@@ -61,6 +61,14 @@ export function loadSavedCredentials(
   env: EnvConfig,
   service: GoogleService,
 ): GoogleOAuth2Client | null {
+  if (service === "gmail" && !isConfigured(env.GOOGLE_TOKEN_PATH)) {
+    return null;
+  }
+
+  if (service === "calendar" && !isConfigured(env.GOOGLE_CALENDAR_TOKEN_PATH)) {
+    return null;
+  }
+
   const tokenPath = getTokenPathForService(env, service);
 
   if (!existsSync(tokenPath)) {

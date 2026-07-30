@@ -75,7 +75,7 @@ describe("loadFamilyConfig", () => {
           name: "Ada",
           aliases: ["A."],
           school: "Example Elementary",
-          grade: "3",
+          startedKindergarten: 2020,
         },
       ],
       defaultEventDurationMinutes: 60,

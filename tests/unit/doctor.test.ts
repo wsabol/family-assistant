@@ -40,6 +40,9 @@ beforeEach(() => {
     GOOGLE_CLIENT_ID: "test-client-id",
     GOOGLE_CLIENT_SECRET: "test-client-secret",
   };
+
+  delete process.env.GOOGLE_TOKEN_PATH;
+  delete process.env.GOOGLE_CALENDAR_TOKEN_PATH;
 });
 
 afterEach(() => {

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { type FamilyConfig } from "../config.js";
+import { getChildGradeDisplay } from "../family/grade.js";
 import { PROMPT_VERSION } from "./schemas.js";
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
@@ -17,7 +18,7 @@ export function buildFamilyContext(family: FamilyConfig): string {
   const children = family.children
     .map(
       (child) =>
-        `- ${child.name} (aliases: ${child.aliases.join(", ") || "none"}), school: ${child.school}, grade: ${child.grade}`,
+        `- ${child.name} (aliases: ${child.aliases.join(", ") || "none"}), school: ${child.school}, grade: ${getChildGradeDisplay(child, family.timezone)}`,
     )
     .join("\n");
 

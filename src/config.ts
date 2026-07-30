@@ -44,7 +44,11 @@ const childSchema = z.object({
   name: z.string().min(1, "Child name is required"),
   aliases: z.array(z.string()).default([]),
   school: z.string().min(1, "Child school is required"),
-  grade: z.string().min(1, "Child grade is required"),
+  startedKindergarten: z
+    .number()
+    .int("startedKindergarten must be a whole year")
+    .min(1990, "startedKindergarten must be 1990 or later")
+    .max(2100, "startedKindergarten must be 2100 or earlier"),
 });
 
 export const familyConfigSchema = z.object({

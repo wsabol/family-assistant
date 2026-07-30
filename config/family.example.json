@@ -7,7 +7,7 @@
       "name": "Child 1",
       "aliases": [],
       "school": "School Name",
-      "grade": "Grade"
+      "startedKindergarten": 2020
     }
   ],
   "defaultEventDurationMinutes": 60,
