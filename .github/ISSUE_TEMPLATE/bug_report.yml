@@ -1,0 +1,69 @@
+name: Bug report
+description: Report something that is broken or not working as documented
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please include as much detail as you can.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+      placeholder: Running `npm run dev -- watch` fails with...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Commands or actions that trigger the issue.
+      placeholder: |
+        1. npm run migrate
+        2. npm run dev -- auth gmail
+        3. npm run dev -- watch
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `npx family-assistant --version` or the git commit SHA.
+      placeholder: 0.1.0 or abc1234
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Windows (WSL)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Paste the output of `npm run doctor` if you can (redact secrets).
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Error messages or log excerpts from `LOG_DIR`.
+      render: shell
+    validations:
+      required: false

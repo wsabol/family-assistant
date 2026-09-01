@@ -1,6 +1,20 @@
 # Family Assistant
 
+[![CI](https://github.com/wsabol/family-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/wsabol/family-assistant/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Local family executive assistant that watches Gmail for school-related messages, extracts proposed calendar actions with AI, requires human review, and writes approved events to Google Calendar.
+
+**Philosophy:** reliable, transparent, and reversible. AI proposes; you approve. Nothing hits your calendar without an explicit human decision.
+
+## Features
+
+- Poll Gmail for messages with a label you choose
+- Extract events, deadlines, and reminders with OpenAI structured output
+- Review and edit proposals in a local web UI (localhost only)
+- Create approved events on a dedicated school calendar
+- Full audit trail in SQLite (source email → proposed action → calendar event)
+- Daily markdown digest and `launchd` templates for macOS automation
 
 ## Requirements
 
@@ -9,45 +23,28 @@ Local family executive assistant that watches Gmail for school-related messages,
 - Google Cloud project with Gmail API and Calendar API enabled
 - OpenAI API key
 
-## Setup
-
-1. Install dependencies:
+## Quick start
 
 ```bash
+git clone https://github.com/wsabol/family-assistant.git
+cd family-assistant
 npm install
-```
-
-2. Copy environment and family config templates:
-
-```bash
 cp .env.example .env
 cp config/family.example.json config/family.json
 ```
 
-3. Edit `config/family.json` with your timezone, Gmail label, children (`name`, `school`, `startedKindergarten`), and school calendar ID.
-
-   Grade is computed automatically from `startedKindergarten` (fall year the child started kindergarten). School year rolls after May; see `src/family/grade.ts`.
-
-4. Configure `.env` with Google OAuth credentials, token paths, and `AI_API_KEY`.
-
-5. Run migrations:
+1. Follow [docs/google-cloud-setup.md](docs/google-cloud-setup.md) for OAuth credentials and API access.
+2. Edit `config/family.json` with your timezone, Gmail label, children, and school calendar ID.
+3. Set `AI_API_KEY` (and other values) in `.env`.
 
 ```bash
 npm run migrate
-```
-
-6. Authorize Google APIs (separate token files for Gmail and Calendar):
-
-```bash
 npm run dev -- auth gmail
 npm run dev -- auth calendar
-```
-
-7. Verify the system:
-
-```bash
 npm run doctor
 ```
+
+When doctor reports **Overall: PASS**, you are ready to run the pipeline.
 
 ## Daily workflow
 
@@ -87,6 +84,20 @@ npx family-assistant watch
 | `launchd:generate` | Build `launchd/` plists from templates |
 | `launchd:load` | Generate, copy to LaunchAgents, `launchctl bootstrap` |
 
+## Architecture
+
+```mermaid
+flowchart LR
+  Gmail[Gmail] --> Watch[watch]
+  Watch --> DB[(SQLite)]
+  DB --> Work[work]
+  Work --> Review[review]
+  Review -->|approved| Write[write-calendar]
+  Write --> Cal[Google Calendar]
+```
+
+Each stage has strict boundaries: the watcher never calls AI or Calendar; the worker never writes Calendar; only approved actions are written. See [docs/architecture.md](docs/architecture.md).
+
 ## Reprocessing
 
 `reprocess` marks existing `awaiting_review` and `approved` actions as `superseded`, then queues the message for a fresh AI extraction. Original records are preserved for audit.
@@ -108,14 +119,16 @@ npm run launchd:load
 
 Suggested schedule: watcher/work/calendar-writer every 5 minutes; digest daily at 8pm.
 
-## Data and backups
+## Data and privacy
+
+Everything runs on your machine:
 
 - SQLite database: `DATABASE_PATH` (default `./data/family-assistant.db`)
 - OAuth tokens: `GOOGLE_TOKEN_PATH`, `GOOGLE_CALENDAR_TOKEN_PATH`
 - Logs: `LOG_DIR`
 - Digests: `DIGEST_DIR`
 
-Back up the database and token files regularly. They are not committed to git.
+Back up the database and token files regularly. They are not committed to git. See [SECURITY.md](SECURITY.md).
 
 ## Family config
 
@@ -138,6 +151,8 @@ npm test
 npm run test:watch
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines, architecture rules, and how to open a pull request.
+
 ## Project status
 
 Implemented:
@@ -154,3 +169,11 @@ Pending:
 - Milestone 7: Evaluation fixture corpus and hardening (collect historical school emails)
 
 See [`.product/mvp.md`](.product/mvp.md) for the full plan.
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md) before opening a pull request.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 Will Sabol

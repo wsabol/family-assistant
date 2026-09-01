@@ -2,6 +2,25 @@
   "name": "family-assistant",
   "version": "0.1.0",
   "description": "Local family executive assistant for school email automation",
+  "license": "MIT",
+  "author": "Will Sabol",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wsabol/family-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wsabol/family-assistant/issues"
+  },
+  "homepage": "https://github.com/wsabol/family-assistant#readme",
+  "keywords": [
+    "gmail",
+    "google-calendar",
+    "school",
+    "family",
+    "openai",
+    "automation",
+    "local-first"
+  ],
   "type": "module",
   "bin": {
     "family-assistant": "./dist/cli/index.js"
