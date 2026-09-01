@@ -44,6 +44,10 @@ export function layout(title: string, nav: NavItem[], body: string): string {
       button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
       button.danger { background: #fff; color: #b91c1c; border-color: #fecaca; }
       .actions { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+      .confidence-low { color: #b91c1c; font-weight: 600; }
+      .confidence-medium { color: #b45309; font-weight: 600; }
+      .confidence-high { color: #15803d; }
+      .warn-badge { background: #ffedd5; color: #9a3412; }
       @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
     </style>
   </head>

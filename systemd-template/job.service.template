@@ -1,0 +1,12 @@
+[Unit]
+Description=Family Assistant {{JOB_NAME}}
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{PROJECT_ROOT}}
+ExecStart={{NODE_PATH}} {{CLI_PATH}} {{COMMAND}}
+EnvironmentFile={{PROJECT_ROOT}}/.env
+
+[Install]
+WantedBy=default.target

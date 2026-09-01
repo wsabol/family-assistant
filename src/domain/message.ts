@@ -25,6 +25,7 @@ export interface Message {
   lastError: string | null;
   modelName: string | null;
   promptVersion: string | null;
+  interpretationInstructions: string | null;
   createdAt: string;
   updatedAt: string;
 }

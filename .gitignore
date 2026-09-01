@@ -6,3 +6,4 @@ data/
 config/family.json
 .DS_Store
 launchd/
+scheduler/

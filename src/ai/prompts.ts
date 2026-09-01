@@ -22,7 +22,7 @@ export function buildFamilyContext(family: FamilyConfig): string {
     )
     .join("\n");
 
-  return [
+  const lines = [
     "Family context:",
     `Timezone: ${family.timezone}`,
     "Children:",
@@ -30,7 +30,17 @@ export function buildFamilyContext(family: FamilyConfig): string {
     `Default event duration minutes: ${family.defaultEventDurationMinutes}`,
     `Default all-day reminder minutes: ${family.defaultAllDayReminderMinutes.join(", ")}`,
     `Default timed event reminder minutes: ${family.defaultTimedEventReminderMinutes.join(", ")}`,
-  ].join("\n");
+  ];
+
+  const guidelines = family.interpretationGuidelines ?? [];
+  if (guidelines.length > 0) {
+    lines.push("", "Standing interpretation guidelines:");
+    for (const guideline of guidelines) {
+      lines.push(`- ${guideline}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 export interface BuildUserPromptInput {
@@ -40,6 +50,7 @@ export interface BuildUserPromptInput {
   receivedAt: string;
   bodyText: string;
   family: FamilyConfig;
+  interpretationInstructions?: string | null;
 }
 
 export function buildUserPrompt(input: BuildUserPromptInput): string {
@@ -47,16 +58,25 @@ export function buildUserPrompt(input: BuildUserPromptInput): string {
     ? `${input.senderName} <${input.senderEmail}>`
     : input.senderEmail;
 
-  return [
+  const sections = [
     buildFamilyContext(input.family),
     "",
     "Email metadata:",
     `Subject: ${input.subject}`,
     `From: ${sender}`,
     `Received at (ISO): ${input.receivedAt}`,
-  `Resolve relative dates relative to this received timestamp in ${input.family.timezone}.`,
-    "",
-    "Email body:",
-    input.bodyText,
-  ].join("\n");
+    `Resolve relative dates relative to this received timestamp in ${input.family.timezone}.`,
+  ];
+
+  if (input.interpretationInstructions?.trim()) {
+    sections.push(
+      "",
+      "Human interpretation guidance (follow these when resolving ambiguity):",
+      input.interpretationInstructions.trim(),
+    );
+  }
+
+  sections.push("", "Email body:", input.bodyText);
+
+  return sections.join("\n");
 }

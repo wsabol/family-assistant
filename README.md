@@ -9,43 +9,24 @@ Local family executive assistant that watches Gmail for school-related messages,
 - Google Cloud project with Gmail API and Calendar API enabled
 - OpenAI API key
 
-## Setup
-
-1. Install dependencies:
+## Quick setup
 
 ```bash
 npm install
+npm run dev -- setup
 ```
 
-2. Copy environment and family config templates:
+The setup wizard creates `.env` and `config/family.json`, guides Google OAuth, runs migrations, and runs doctor. See [docs/google-cloud-setup.md](docs/google-cloud-setup.md) for Google Cloud configuration.
+
+Manual setup:
 
 ```bash
 cp .env.example .env
 cp config/family.example.json config/family.json
-```
-
-3. Edit `config/family.json` with your timezone, Gmail label, children (`name`, `school`, `startedKindergarten`), and school calendar ID.
-
-   Grade is computed automatically from `startedKindergarten` (fall year the child started kindergarten). School year rolls after May; see `src/family/grade.ts`.
-
-4. Configure `.env` with Google OAuth credentials, token paths, and `AI_API_KEY`.
-
-5. Run migrations:
-
-```bash
+# edit .env and config/family.json
 npm run migrate
-```
-
-6. Authorize Google APIs (separate token files for Gmail and Calendar):
-
-```bash
 npm run dev -- auth gmail
 npm run dev -- auth calendar
-```
-
-7. Verify the system:
-
-```bash
 npm run doctor
 ```
 
@@ -55,9 +36,11 @@ npm run doctor
 npm run dev -- watch          # ingest labeled Gmail messages
 npm run dev -- work           # AI extraction for queued messages
 npm run dev -- review         # local review UI at http://127.0.0.1:3847
+npm run dev -- admin          # config/auth/health UI at http://127.0.0.1:3848
 npm run dev -- write-calendar # create events for approved actions
 npm run dev -- digest         # markdown summary in data/digests/
 npm run dev -- status         # queue and review counts
+npm run dev -- health         # proactive health check + alerts
 ```
 
 After building:
@@ -71,42 +54,52 @@ npx family-assistant watch
 
 | Command | Description |
 |---------|-------------|
+| `setup` | Interactive setup wizard (`--non-interactive` to validate only) |
 | `auth gmail` | OAuth for Gmail (read + label) |
 | `auth calendar` | OAuth for Calendar events |
+| `auth` / `auth status` | Show Gmail/Calendar auth probe status |
+| `admin` | Local admin UI for config, auth status, health |
+| `health` | Run health checks and send webhook alerts |
 | `watch` | Poll Gmail for labeled messages |
 | `work` | Process queued messages with AI |
 | `review` | Start review web UI (localhost) |
 | `approve <id>` | Approve action from CLI |
 | `reject <id>` | Reject action from CLI |
-| `reprocess <message-id>` | Re-run AI; supersedes prior awaiting/approved actions |
+| `reprocess <message-id>` | Re-run AI (`--instructions "..."` optional) |
 | `write-calendar` | Create Google Calendar events |
 | `digest` | Write daily markdown digest |
 | `status` | Show queue status |
 | `doctor` | Health checks |
 | `migrate` | Apply database migrations |
-| `launchd:generate` | Build `launchd/` plists from templates |
-| `launchd:load` | Generate, copy to LaunchAgents, `launchctl bootstrap` |
+| `scheduler:generate` | Build scheduler artifacts for this OS |
+| `scheduler:install` | Install scheduled jobs (macOS/Linux/Windows) |
 
-## Reprocessing
+`launchd:generate` and `launchd:load` are aliases for the scheduler commands on macOS.
 
-`reprocess` marks existing `awaiting_review` and `approved` actions as `superseded`, then queues the message for a fresh AI extraction. Original records are preserved for audit.
+## Reprocessing and interpretation instructions
 
-## Automation (launchd)
-
-Example plists are generated from [`launchd-template/`](launchd-template/) into [`launchd/`](launchd/) (gitignored):
+`reprocess` marks existing `awaiting_review` and `approved` actions as `superseded`, then queues the message for a fresh AI extraction. Add human guidance with:
 
 ```bash
-npm run launchd:generate
+npm run dev -- reprocess 42 --instructions "This is for 1st grade only"
 ```
 
-Install into LaunchAgents and load (regenerates plists first):
+In the review UI, save instructions on the message detail page before reprocessing. Standing guidelines can be set in `config/family.json` under `interpretationGuidelines`.
+
+## Automation (cross-platform)
+
+Jobs are defined in [`config/scheduler.json`](config/scheduler.json). See [docs/scheduling.md](docs/scheduling.md).
 
 ```bash
 npm run build
-npm run launchd:load
+npm run scheduler:install
 ```
 
-Suggested schedule: watcher/work/calendar-writer every 5 minutes; digest daily at 8pm.
+Includes watcher, worker, calendar-writer (every 5 min), digest (daily 8pm), and health checks (every 15 min).
+
+## Alerts
+
+Configure `ALERT_WEBHOOK_URL` in `.env` to receive notifications when Gmail/Calendar auth fails. See [docs/alerts.md](docs/alerts.md).
 
 ## Data and backups
 
@@ -127,6 +120,8 @@ Back up the database and token files regularly. They are not committed to git.
 | `aliases` | Optional nicknames for AI matching |
 | `school` | School name |
 | `startedKindergarten` | Calendar year they started kindergarten (e.g. `2020`) |
+
+Optional: `interpretationGuidelines` (array of strings), `reviewHints` (UI sorting thresholds).
 
 Grade is derived at runtime — do not add a `grade` field.
 

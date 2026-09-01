@@ -6,6 +6,8 @@ import { MessagesRepository } from "../db/repositories/messages.js";
 import { type ApprovedActionPayload } from "../db/repositories/proposed-actions.js";
 import { ProposedActionsRepository } from "../db/repositories/proposed-actions.js";
 import { createCalendarClient } from "./client.js";
+import { isGoogleAuthError } from "../google/oauth.js";
+import { recordAuthFailure } from "../health/monitor.js";
 import {
   actionToApprovedPayload,
   isCalendarWritableAction,
@@ -44,7 +46,12 @@ export async function runCalendarWriter(
     logger.warn({ staleRecovered }, "Recovered stale writing actions");
   }
 
-  const calendar = await createCalendarClient(config.env);
+  const calendar = await createCalendarClient(config.env).catch((error) => {
+    if (isGoogleAuthError(error)) {
+      recordAuthFailure(db, "calendar", error);
+    }
+    throw error;
+  });
   const calendarId = config.family.schoolCalendarId;
 
   const result: WriteCalendarResult = {

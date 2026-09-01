@@ -14,8 +14,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "launchd:generate": "node scripts/generate-launchd.mjs",
-    "launchd:load": "npm run launchd:generate && node scripts/load-launchd.mjs"
+    "scheduler:generate": "node scripts/generate-scheduler.mjs",
+    "scheduler:install": "npm run scheduler:generate && node scripts/install-scheduler.mjs",
+    "launchd:generate": "npm run scheduler:generate",
+    "launchd:load": "npm run scheduler:install"
   },
   "engines": {
     "node": ">=20"

@@ -19,7 +19,10 @@ export type LogComponent =
   | "watch"
   | "work"
   | "write-calendar"
-  | "status";
+  | "status"
+  | "health"
+  | "admin"
+  | "setup";
 
 export function createLogger(
   env: Pick<EnvConfig, "LOG_LEVEL" | "LOG_DIR">,
