@@ -3,15 +3,17 @@ import { runMigrations, verifyDomainTables } from "../db/migrations.js";
 import {
   ConfigError,
   isConfigured,
-  loadConfig,
   loadEnvConfig,
   loadFamilyConfig,
   resolvePath,
+  validateAlertConfig,
 } from "../config.js";
+import { existsSync } from "node:fs";
 import { canWriteToLogDirectory } from "../logger.js";
-import { loadSavedCredentials } from "../google/oauth.js";
+import { probeCredentials } from "../google/oauth.js";
 import { createGmailClient, listLabelIdByName } from "../gmail/client.js";
 import { verifyCalendarAccess } from "../calendar/client.js";
+import { loadSystemPrompt } from "../ai/prompts.js";
 
 export type CheckStatus = "pass" | "fail" | "warn" | "skip";
 
@@ -39,7 +41,6 @@ export async function runDoctor(): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [];
 
   let env;
-
   try {
     env = loadEnvConfig();
     addCheck(checks, "Environment variables", "pass", "Required environment variables are valid");
@@ -55,7 +56,6 @@ export async function runDoctor(): Promise<DoctorReport> {
   }
 
   let family;
-
   try {
     family = loadFamilyConfig(env.FAMILY_CONFIG_PATH);
     addCheck(
@@ -137,6 +137,33 @@ export async function runDoctor(): Promise<DoctorReport> {
     );
   }
 
+  const promptPath = resolvePath("config/prompts/school-email-v1.txt");
+  if (existsSync(promptPath)) {
+    try {
+      loadSystemPrompt();
+      addCheck(checks, "Prompt file", "pass", "AI prompt file is readable");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      addCheck(checks, "Prompt file", "fail", message);
+    }
+  } else {
+    addCheck(checks, "Prompt file", "fail", `Prompt file not found at ${promptPath}`);
+  }
+
+  const alertError = validateAlertConfig(env);
+  if (alertError) {
+    addCheck(checks, "Alert configuration", "fail", alertError);
+  } else if (isConfigured(env.ALERT_WEBHOOK_URL)) {
+    addCheck(checks, "Alert configuration", "pass", "Webhook alert URL configured");
+  } else {
+    addCheck(
+      checks,
+      "Alert configuration",
+      "warn",
+      "No ALERT_WEBHOOK_URL configured (optional for proactive alerts)",
+    );
+  }
+
   if (isConfigured(env.GOOGLE_CLIENT_ID) && isConfigured(env.GOOGLE_CLIENT_SECRET)) {
     addCheck(
       checks,
@@ -153,25 +180,50 @@ export async function runDoctor(): Promise<DoctorReport> {
     );
   }
 
-  if (loadSavedCredentials(env, "gmail")) {
-    addCheck(checks, "Gmail credentials", "pass", "Saved Gmail OAuth token found");
-  } else {
+  const gmailProbe = await probeCredentials(env, "gmail");
+  if (gmailProbe.ok) {
+    addCheck(
+      checks,
+      "Gmail credentials",
+      "pass",
+      `Gmail authorized${gmailProbe.expiresAt ? ` (token expires ${gmailProbe.expiresAt})` : ""}`,
+    );
+  } else if (!gmailProbe.tokenPresent) {
     addCheck(
       checks,
       "Gmail credentials",
       "warn",
       "No saved Gmail token. Run: family-assistant auth gmail",
     );
+  } else {
+    addCheck(checks, "Gmail credentials", "fail", gmailProbe.error ?? "Gmail auth failed");
   }
 
-  if (loadSavedCredentials(env, "calendar")) {
-    addCheck(checks, "Calendar credentials", "pass", "Saved Calendar OAuth token found");
-  } else {
+  const calendarProbe = await probeCredentials(
+    env,
+    "calendar",
+    family?.schoolCalendarId,
+  );
+  if (calendarProbe.ok) {
+    addCheck(
+      checks,
+      "Calendar credentials",
+      "pass",
+      `Calendar authorized${calendarProbe.expiresAt ? ` (token expires ${calendarProbe.expiresAt})` : ""}`,
+    );
+  } else if (!calendarProbe.tokenPresent) {
     addCheck(
       checks,
       "Calendar credentials",
       "warn",
       "No saved Calendar token. Run: family-assistant auth calendar",
+    );
+  } else {
+    addCheck(
+      checks,
+      "Calendar credentials",
+      "fail",
+      calendarProbe.error ?? "Calendar auth failed",
     );
   }
 
@@ -186,7 +238,7 @@ export async function runDoctor(): Promise<DoctorReport> {
     addCheck(checks, "AI credentials", "warn", "AI_PROVIDER and AI_API_KEY not configured");
   }
 
-  if (family && loadSavedCredentials(env, "gmail")) {
+  if (family && gmailProbe.ok) {
     try {
       const client = await createGmailClient(env);
       const labelId = await listLabelIdByName(client, family.gmailLabel);
@@ -214,7 +266,7 @@ export async function runDoctor(): Promise<DoctorReport> {
     addCheck(checks, "Gmail labels", "skip", "Skipped (Gmail not authorized or family config missing)");
   }
 
-  if (family && loadSavedCredentials(env, "calendar")) {
+  if (family && calendarProbe.ok) {
     try {
       await verifyCalendarAccess(env, family.schoolCalendarId);
       addCheck(
@@ -262,19 +314,4 @@ export async function runDoctorCommand(): Promise<number> {
   const report = await runDoctor();
   console.log(formatDoctorReport(report));
   return report.passed ? 0 : 1;
-}
-
-export function loadConfigForCommand() {
-  try {
-    return loadConfig();
-  } catch (error) {
-    const message =
-      error instanceof ConfigError
-        ? error.message
-        : error instanceof Error
-          ? error.message
-          : String(error);
-    console.error(message);
-    process.exit(1);
-  }
 }

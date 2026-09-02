@@ -1,0 +1,3 @@
+$action = New-ScheduledTaskAction -Execute "{{NODE_PATH}}" -Argument '"{{CLI_PATH}}" {{COMMAND}}' -WorkingDirectory "{{PROJECT_ROOT}}"
+$trigger = {{TRIGGER_EXPR}}
+Register-ScheduledTask -TaskName "FamilyAssistant-{{JOB_NAME}}" -Action $action -Trigger $trigger -Description "Family Assistant {{JOB_NAME}}" -Force

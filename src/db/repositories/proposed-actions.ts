@@ -157,6 +157,30 @@ export class ProposedActionsRepository {
     return rows.map(mapProposedActionRow);
   }
 
+  listAwaitingReviewSorted(family?: import("../../config.js").FamilyConfig): ProposedAction[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM proposed_actions WHERE status = 'awaiting_review' ORDER BY confidence ASC, created_at ASC",
+      )
+      .all() as ProposedActionRow[];
+
+    const actions = rows.map(mapProposedActionRow);
+    const priorityTypes = family?.reviewHints?.priorityActionTypes ?? [];
+
+    if (priorityTypes.length === 0) {
+      return actions;
+    }
+
+    return [...actions].sort((a, b) => {
+      const aPriority = priorityTypes.includes(a.actionType) ? 0 : 1;
+      const bPriority = priorityTypes.includes(b.actionType) ? 0 : 1;
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+      return a.confidence - b.confidence;
+    });
+  }
+
   countByStatus(): Record<ProposedActionStatus, number> {
     const rows = this.db
       .prepare(

@@ -16,6 +16,7 @@ export interface MessageRow {
   last_error: string | null;
   model_name: string | null;
   prompt_version: string | null;
+  interpretation_instructions: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +38,7 @@ export function mapMessageRow(row: MessageRow): Message {
     lastError: row.last_error,
     modelName: row.model_name,
     promptVersion: row.prompt_version,
+    interpretationInstructions: row.interpretation_instructions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -236,5 +238,17 @@ export class MessagesRepository {
         `,
       )
       .run(id);
+  }
+
+  setInterpretationInstructions(id: number, instructions: string | null): void {
+    this.db
+      .prepare(
+        `
+        UPDATE messages
+        SET interpretation_instructions = ?, updated_at = datetime('now')
+        WHERE id = ?
+        `,
+      )
+      .run(instructions, id);
   }
 }

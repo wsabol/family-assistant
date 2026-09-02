@@ -12,5 +12,10 @@
   ],
   "defaultEventDurationMinutes": 60,
   "defaultAllDayReminderMinutes": [1080],
-  "defaultTimedEventReminderMinutes": [60]
+  "defaultTimedEventReminderMinutes": [60],
+  "interpretationGuidelines": [],
+  "reviewHints": {
+    "lowConfidenceThreshold": 0.8,
+    "priorityActionTypes": ["school_closure", "deadline"]
+  }
 }
