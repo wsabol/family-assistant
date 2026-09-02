@@ -39,7 +39,7 @@
     "launchd:load": "npm run scheduler:install"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "overrides": {
     "gaxios": "7.3.0"

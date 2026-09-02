@@ -18,7 +18,7 @@ Local family executive assistant that watches Gmail for school-related messages,
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - npm
 - Google Cloud project with Gmail API and Calendar API enabled
 - OpenAI API key
