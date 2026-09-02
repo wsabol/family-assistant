@@ -43,6 +43,7 @@ beforeEach(() => {
 
   delete process.env.GOOGLE_TOKEN_PATH;
   delete process.env.GOOGLE_CALENDAR_TOKEN_PATH;
+  delete process.env.AI_API_KEY;
 });
 
 afterEach(() => {
@@ -50,10 +51,10 @@ afterEach(() => {
 });
 
 describe("runDoctor", () => {
-  it("passes with valid env, config, database, and log directory", async () => {
+  it("fails readiness when required integration credentials are missing", async () => {
     const report = await runDoctor();
 
-    expect(report.passed).toBe(true);
+    expect(report.passed).toBe(false);
     expect(report.checks.find((check) => check.name === "Environment variables")?.status).toBe(
       "pass",
     );
@@ -65,7 +66,13 @@ describe("runDoctor", () => {
       report.checks.find((check) => check.name === "Writable log directory")?.status,
     ).toBe("pass");
     expect(report.checks.find((check) => check.name === "Gmail credentials")?.status).toBe(
-      "warn",
+      "fail",
+    );
+    expect(report.checks.find((check) => check.name === "Calendar credentials")?.status).toBe(
+      "fail",
+    );
+    expect(report.checks.find((check) => check.name === "AI credentials")?.status).toBe(
+      "fail",
     );
   });
 

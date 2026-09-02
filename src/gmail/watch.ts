@@ -48,19 +48,23 @@ export async function runWatcher(
   const query = buildWatchQuery(config.family.gmailLabel);
   const batchLimit = config.env.WATCH_BATCH_LIMIT;
 
-  const queuedLabelId = await ensureLabel(
-    gmail,
-    FAMILY_ASSISTANT_LABELS.queued,
-  );
-  const processedLabelId = await ensureLabel(
-    gmail,
-    FAMILY_ASSISTANT_LABELS.processed,
-  );
-  const errorLabelId = await ensureLabel(gmail, FAMILY_ASSISTANT_LABELS.error);
-
-  const messageIds = await withRetry(() =>
-    listMessageIds(gmail, query, batchLimit),
-  );
+  let queuedLabelId: string;
+  let processedLabelId: string;
+  let errorLabelId: string;
+  let messageIds: string[];
+  try {
+    queuedLabelId = await ensureLabel(gmail, FAMILY_ASSISTANT_LABELS.queued);
+    processedLabelId = await ensureLabel(gmail, FAMILY_ASSISTANT_LABELS.processed);
+    errorLabelId = await ensureLabel(gmail, FAMILY_ASSISTANT_LABELS.error);
+    messageIds = await withRetry(() =>
+      listMessageIds(gmail, query, batchLimit),
+    );
+  } catch (error) {
+    if (isGoogleAuthError(error)) {
+      recordAuthFailure(db, "gmail", error);
+    }
+    throw error;
+  }
 
   const result: WatchResult = {
     fetched: messageIds.length,

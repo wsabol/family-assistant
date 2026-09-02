@@ -25,9 +25,9 @@ In **APIs & Services → Library**, enable:
    - `https://www.googleapis.com/auth/gmail.modify`
    - `https://www.googleapis.com/auth/calendar.readonly`
    - `https://www.googleapis.com/auth/calendar.events`
-5. Add your Google account as a **test user** while the app is in testing mode.
+5. Add your Google account as a **test user** while initially validating the setup.
 
-Testing mode is fine for personal use. Only test users you add can sign in until you publish the app.
+External apps in **Testing** receive refresh tokens that expire after seven days for the Gmail and Calendar scopes used here. After validating the flow, change the app's publishing status to **In production** so scheduled jobs can remain authorized. An unverified personal app may continue to show Google's warning and user cap; review Google's verification requirements before distributing it to other people.
 
 ## 4. Create OAuth client credentials
 
@@ -48,7 +48,7 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 The CLI starts a temporary local server for OAuth. Default redirect:
 
 ```
-http://localhost:3456/oauth2callback
+http://127.0.0.1:3456/oauth2callback
 ```
 
 `OAUTH_REDIRECT_PORT` in `.env` controls the port (default `3456`). If you use a Web application OAuth client in Google Cloud, add this exact redirect URI to the client configuration.
@@ -99,10 +99,10 @@ Doctor checks OAuth configuration, saved tokens, label existence, and calendar a
 
 | Symptom | Things to check |
 |---------|------------------|
-| `redirect_uri_mismatch` | Redirect URI in Google Cloud matches `http://localhost:<OAUTH_REDIRECT_PORT>/oauth2callback` |
+| `redirect_uri_mismatch` | Redirect URI in Google Cloud matches `http://127.0.0.1:<OAUTH_REDIRECT_PORT>/oauth2callback` |
 | `access_denied` | Your account is a test user on the OAuth consent screen |
 | Gmail label not found | Label name in Gmail exactly matches `gmailLabel` in family config |
 | Calendar access failed | Calendar ID is correct and the authorized account can create events on that calendar |
-| Token expired / revoked | Re-run `auth gmail` or `auth calendar` |
+| Refresh token expired / revoked | Re-run `auth gmail` or `auth calendar`; if it expires weekly, move the OAuth app from Testing to In production |
 
 For more help, open a [GitHub Discussion](https://github.com/wsabol/family-assistant/discussions) or issue with `npm run doctor` output (redact secrets).

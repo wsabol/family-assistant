@@ -10,7 +10,7 @@ Add to `.env`:
 ALERT_WEBHOOK_URL=https://your-webhook.example/hooks/abc123
 ```
 
-The webhook receives a JSON POST:
+Generic webhooks receive a JSON POST:
 
 ```json
 {
@@ -23,7 +23,7 @@ The webhook receives a JSON POST:
 
 When an incident resolves, a second notification is sent with `"status": "resolved"`.
 
-Compatible with Slack incoming webhooks, Discord webhooks, n8n, and other generic HTTP receivers.
+Slack and Discord webhook URLs are detected automatically and receive their required `text` or `content` payload shape. n8n and other generic HTTP receivers receive the JSON object above.
 
 ## When alerts fire
 

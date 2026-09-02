@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 import {
   familyConfigSchema,
@@ -66,6 +67,8 @@ function updateEnvValue(envPath: string, key: string, value: string): void {
   } else {
     writeFileSync(envPath, `${content.trimEnd()}\n${line}\n`, "utf8");
   }
+
+  process.env[key] = value;
 }
 
 function readEnvValue(envPath: string, key: string): string {
@@ -74,16 +77,21 @@ function readEnvValue(envPath: string, key: string): string {
   return match?.[1]?.trim() ?? "";
 }
 
-async function prompt(rl: ReturnType<typeof createInterface>, question: string, defaultValue?: string): Promise<string> {
+async function prompt(
+  rl: ReturnType<typeof createInterface>,
+  question: string,
+  defaultValue?: string,
+): Promise<string> {
   const suffix = defaultValue ? ` [${defaultValue}]` : "";
   const answer = (await rl.question(`${question}${suffix}: `)).trim();
   return answer || defaultValue || "";
 }
 
-async function runInteractiveSetup(root: string): Promise<void> {
+async function runInteractiveSetup(root: string): Promise<number> {
   const rl = createInterface({ input, output });
   const envPath = ensureEnvFile(root);
   const familyPath = ensureFamilyConfig(root);
+  dotenv.config({ path: envPath });
 
   console.log("Family Assistant Setup");
   console.log("======================\n");
@@ -131,7 +139,7 @@ async function runInteractiveSetup(root: string): Promise<void> {
 
   const aiKey = readEnvValue(envPath, "AI_API_KEY");
   if (!aiKey) {
-    const entered = await prompt(rl, "OpenAI API key (optional, press Enter to skip)");
+    const entered = await prompt(rl, "OpenAI API key");
     if (entered) {
       updateEnvValue(envPath, "AI_API_KEY", entered);
     }
@@ -157,13 +165,21 @@ async function runInteractiveSetup(root: string): Promise<void> {
   db.close();
 
   console.log("\nRunning doctor...\n");
-  await runDoctorCommand();
+  const doctorCode = await runDoctorCommand();
+
+  if (doctorCode !== 0) {
+    console.error(
+      "\nSetup is incomplete. Fix the failed doctor checks, then run npm run doctor again.",
+    );
+    return doctorCode;
+  }
 
   console.log("\nSetup complete. Next steps:");
   console.log("  npm run dev -- watch");
   console.log("  npm run dev -- review");
   console.log("  npm run dev -- admin");
   console.log("  npm run scheduler:install   # macOS/Linux/Windows");
+  return 0;
 }
 
 function runNonInteractiveSetup(root: string): number {
@@ -212,6 +228,5 @@ export async function runSetupCommand(options: SetupOptions = {}): Promise<numbe
     return runNonInteractiveSetup(root);
   }
 
-  await runInteractiveSetup(root);
-  return 0;
+  return runInteractiveSetup(root);
 }

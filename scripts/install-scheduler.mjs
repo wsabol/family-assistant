@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schedulerDir = join(root, "scheduler");
+const cliPath = join(root, "dist", "cli", "index.js");
+
+if (!existsSync(cliPath)) {
+  console.error(`Missing ${cliPath}. Run npm run build before installing scheduled jobs.`);
+  process.exit(1);
+}
 
 if (!existsSync(schedulerDir)) {
   console.error(`Missing ${schedulerDir}. Run npm run scheduler:generate first.`);
@@ -24,7 +30,7 @@ if (process.platform === "darwin") {
   const plists = readdirSync(launchdDir).filter((name) => name.endsWith(".plist"));
   mkdirSync(agentsDir, { recursive: true });
 
-  const uid = execSync("id -u", { encoding: "utf8" }).trim();
+  const uid = execFileSync("id", ["-u"], { encoding: "utf8" }).trim();
   const domain = `gui/${uid}`;
 
   function getLabel(plistPath) {
@@ -38,10 +44,12 @@ if (process.platform === "darwin") {
 
   function bootout(label, dest) {
     try {
-      execSync(`launchctl bootout ${domain}/${label}`, { stdio: "ignore" });
+      execFileSync("launchctl", ["bootout", `${domain}/${label}`], {
+        stdio: "ignore",
+      });
     } catch {
       try {
-        execSync(`launchctl bootout ${domain} ${dest}`, { stdio: "ignore" });
+        execFileSync("launchctl", ["bootout", domain, dest], { stdio: "ignore" });
       } catch {
         // Not loaded yet
       }
@@ -54,7 +62,9 @@ if (process.platform === "darwin") {
     const label = getLabel(src);
     bootout(label, dest);
     cpSync(src, dest);
-    execSync(`launchctl bootstrap ${domain} ${dest}`, { stdio: "inherit" });
+    execFileSync("launchctl", ["bootstrap", domain, dest], {
+      stdio: "inherit",
+    });
     console.log(`Loaded ${label} (${dest})`);
   }
 
@@ -74,9 +84,11 @@ if (process.platform === "darwin") {
   }
 
   try {
-    execSync("systemctl --user daemon-reload", { stdio: "inherit" });
+    execFileSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
     for (const name of readdirSync(systemdDir).filter((n) => n.endsWith(".timer"))) {
-      execSync(`systemctl --user enable --now ${name}`, { stdio: "inherit" });
+      execFileSync("systemctl", ["--user", "enable", "--now", name], {
+        stdio: "inherit",
+      });
     }
     console.log("Installed systemd user timers. Ensure user lingering is enabled if needed.");
   } catch (error) {
@@ -92,9 +104,11 @@ if (process.platform === "darwin") {
   }
 
   for (const name of readdirSync(windowsDir).filter((n) => n.endsWith(".ps1"))) {
-    execSync(`powershell -ExecutionPolicy Bypass -File ${join(windowsDir, name)}`, {
-      stdio: "inherit",
-    });
+    execFileSync(
+      "powershell",
+      ["-ExecutionPolicy", "Bypass", "-File", join(windowsDir, name)],
+      { stdio: "inherit" },
+    );
   }
 
   console.log("Registered Windows scheduled tasks.");

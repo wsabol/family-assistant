@@ -120,7 +120,7 @@ export async function runCalendarWriter(
       actionsRepo.markCompleted(action.id);
       result.created += 1;
 
-      await markGmailProcessed(config, message.gmailMessageId, logger);
+      await markGmailProcessed(config, db, message.gmailMessageId, logger);
 
       logger.info(
         {
@@ -134,6 +134,9 @@ export async function runCalendarWriter(
     } catch (error) {
       result.failed += 1;
       actionsRepo.markFailed(action.id);
+      if (isGoogleAuthError(error)) {
+        recordAuthFailure(db, "calendar", error);
+      }
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       logger.error(
@@ -149,6 +152,7 @@ export async function runCalendarWriter(
 
 async function markGmailProcessed(
   config: AppConfig,
+  db: import("better-sqlite3").Database,
   gmailMessageId: string,
   logger: Logger,
 ): Promise<void> {
@@ -170,6 +174,9 @@ async function markGmailProcessed(
       queuedLabelId ? [queuedLabelId] : [],
     );
   } catch (error) {
+    if (isGoogleAuthError(error)) {
+      recordAuthFailure(db, "gmail", error);
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
       { gmailMessageId, error: message },

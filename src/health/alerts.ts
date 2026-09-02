@@ -8,6 +8,34 @@ export interface AlertPayload {
   timestamp: string;
 }
 
+function formatAlertText(payload: AlertPayload): string {
+  return `[Family Assistant] ${payload.incidentType} ${payload.status}: ${payload.message} (${payload.timestamp})`;
+}
+
+export function buildWebhookBody(
+  urlValue: string,
+  payload: AlertPayload,
+): object {
+  const hostname = new URL(urlValue).hostname.toLowerCase();
+  if (
+    hostname === "hooks.slack.com" ||
+    hostname.endsWith(".hooks.slack.com") ||
+    hostname === "hooks.slack-gov.com" ||
+    hostname.endsWith(".hooks.slack-gov.com")
+  ) {
+    return { text: formatAlertText(payload) };
+  }
+  if (
+    hostname === "discord.com" ||
+    hostname.endsWith(".discord.com") ||
+    hostname === "discordapp.com" ||
+    hostname.endsWith(".discordapp.com")
+  ) {
+    return { content: formatAlertText(payload) };
+  }
+  return payload;
+}
+
 export async function sendAlert(
   env: EnvConfig,
   payload: AlertPayload,
@@ -20,7 +48,7 @@ export async function sendAlert(
     const response = await fetch(env.ALERT_WEBHOOK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildWebhookBody(env.ALERT_WEBHOOK_URL, payload)),
     });
     return response.ok;
   } catch {

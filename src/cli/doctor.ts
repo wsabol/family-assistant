@@ -192,7 +192,7 @@ export async function runDoctor(): Promise<DoctorReport> {
     addCheck(
       checks,
       "Gmail credentials",
-      "warn",
+      "fail",
       "No saved Gmail token. Run: family-assistant auth gmail",
     );
   } else {
@@ -215,7 +215,7 @@ export async function runDoctor(): Promise<DoctorReport> {
     addCheck(
       checks,
       "Calendar credentials",
-      "warn",
+      "fail",
       "No saved Calendar token. Run: family-assistant auth calendar",
     );
   } else {
@@ -235,7 +235,7 @@ export async function runDoctor(): Promise<DoctorReport> {
       `Configured (${env.AI_PROVIDER}, model ${env.AI_MODEL})`,
     );
   } else {
-    addCheck(checks, "AI credentials", "warn", "AI_PROVIDER and AI_API_KEY not configured");
+    addCheck(checks, "AI credentials", "fail", "AI_PROVIDER and AI_API_KEY not configured");
   }
 
   if (family && gmailProbe.ok) {

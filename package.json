@@ -34,7 +34,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "scheduler:generate": "node scripts/generate-scheduler.mjs",
-    "scheduler:install": "npm run scheduler:generate && node scripts/install-scheduler.mjs",
+    "scheduler:install": "npm run build && npm run scheduler:generate && node scripts/install-scheduler.mjs",
     "launchd:generate": "npm run scheduler:generate",
     "launchd:load": "npm run scheduler:install"
   },
@@ -49,6 +49,7 @@
     "commander": "^13.1.0",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "google-auth-library": "^10.9.1",
     "googleapis": "^173.0.0",
     "html-to-text": "^10.0.0",
     "openai": "^7.1.0",
