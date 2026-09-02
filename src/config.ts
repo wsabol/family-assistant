@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import dotenv from "dotenv";
@@ -36,6 +36,14 @@ export const envSchema = z.object({
   BODY_MAX_CHARS: z.coerce.number().int().positive().default(12000),
   DIGEST_DIR: z.string().default("./data/digests"),
   OAUTH_REDIRECT_PORT: z.coerce.number().int().positive().default(3456),
+  ADMIN_PORT: z.coerce.number().int().positive().default(3848),
+  ALERT_WEBHOOK_URL: z.string().optional(),
+  ALERT_EMAIL_TO: z.string().optional(),
+  ALERT_SMTP_HOST: z.string().optional(),
+  ALERT_SMTP_PORT: z.coerce.number().int().positive().default(587),
+  ALERT_SMTP_USER: z.string().optional(),
+  ALERT_SMTP_PASS: z.string().optional(),
+  ALERT_EMAIL_FROM: z.string().optional(),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;
@@ -51,6 +59,13 @@ const childSchema = z.object({
     .max(2100, "startedKindergarten must be 2100 or earlier"),
 });
 
+const reviewHintsSchema = z
+  .object({
+    lowConfidenceThreshold: z.number().min(0).max(1).default(0.8),
+    priorityActionTypes: z.array(z.string()).default([]),
+  })
+  .optional();
+
 export const familyConfigSchema = z.object({
   timezone: z.string().min(1, "timezone is required"),
   schoolCalendarId: z.string().min(1, "schoolCalendarId is required"),
@@ -61,6 +76,8 @@ export const familyConfigSchema = z.object({
   defaultEventDurationMinutes: z.number().int().positive(),
   defaultAllDayReminderMinutes: z.array(z.number().int()),
   defaultTimedEventReminderMinutes: z.array(z.number().int()),
+  interpretationGuidelines: z.array(z.string()).default([]),
+  reviewHints: reviewHintsSchema,
 });
 
 export type FamilyConfig = z.infer<typeof familyConfigSchema>;
@@ -138,4 +155,38 @@ export function resolvePath(pathValue: string): string {
 
 export function isConfigured(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+export function saveFamilyConfig(configPath: string, family: FamilyConfig): void {
+  writeFileSync(configPath, `${JSON.stringify(family, null, 2)}\n`, "utf8");
+}
+
+export function validateAlertConfig(env: EnvConfig): string | null {
+  if (isConfigured(env.ALERT_WEBHOOK_URL)) {
+    try {
+      const url = new URL(env.ALERT_WEBHOOK_URL!);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return "ALERT_WEBHOOK_URL must use http or https";
+      }
+    } catch {
+      return "ALERT_WEBHOOK_URL is not a valid URL";
+    }
+  }
+
+  const smtpConfigured =
+    isConfigured(env.ALERT_SMTP_HOST) ||
+    isConfigured(env.ALERT_EMAIL_TO) ||
+    isConfigured(env.ALERT_EMAIL_FROM);
+
+  if (smtpConfigured) {
+    if (
+      !isConfigured(env.ALERT_SMTP_HOST) ||
+      !isConfigured(env.ALERT_EMAIL_TO) ||
+      !isConfigured(env.ALERT_EMAIL_FROM)
+    ) {
+      return "ALERT_SMTP_HOST, ALERT_EMAIL_TO, and ALERT_EMAIL_FROM are required for email alerts";
+    }
+  }
+
+  return null;
 }

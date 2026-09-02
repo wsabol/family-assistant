@@ -2,6 +2,25 @@
   "name": "family-assistant",
   "version": "0.1.0",
   "description": "Local family executive assistant for school email automation",
+  "license": "MIT",
+  "author": "Will Sabol",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wsabol/family-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wsabol/family-assistant/issues"
+  },
+  "homepage": "https://github.com/wsabol/family-assistant#readme",
+  "keywords": [
+    "gmail",
+    "google-calendar",
+    "school",
+    "family",
+    "openai",
+    "automation",
+    "local-first"
+  ],
   "type": "module",
   "bin": {
     "family-assistant": "./dist/cli/index.js"
@@ -14,11 +33,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "launchd:generate": "node scripts/generate-launchd.mjs",
-    "launchd:load": "npm run launchd:generate && node scripts/load-launchd.mjs"
+    "scheduler:generate": "node scripts/generate-scheduler.mjs",
+    "scheduler:install": "npm run build && npm run scheduler:generate && node scripts/install-scheduler.mjs",
+    "launchd:generate": "npm run scheduler:generate",
+    "launchd:load": "npm run scheduler:install"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "overrides": {
     "gaxios": "7.3.0"
@@ -28,6 +49,7 @@
     "commander": "^13.1.0",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
+    "google-auth-library": "^10.9.1",
     "googleapis": "^173.0.0",
     "html-to-text": "^10.0.0",
     "openai": "^7.1.0",

@@ -1,14 +1,53 @@
 import { escapeHtml, layout, type NavItem } from "../templates/layout.js";
 import type { Message } from "../../domain/message.js";
 import type { ProposedAction } from "../../domain/proposed-action.js";
+import type { FamilyConfig } from "../../config.js";
 
 const NAV: NavItem[] = [
   { href: "/", label: "Inbox" },
   { href: "/actions/awaiting", label: "Awaiting review" },
+  { href: `http://127.0.0.1:${process.env.ADMIN_PORT ?? "3848"}/`, label: "Admin" },
 ];
 
+function confidenceClass(confidence: number, threshold = 0.8): string {
+  if (confidence < 0.6) {
+    return "confidence-low";
+  }
+  if (confidence < threshold) {
+    return "confidence-medium";
+  }
+  return "confidence-high";
+}
+
+function messageReviewBadge(actions: ProposedAction[], family?: FamilyConfig): string {
+  const awaiting = actions.filter((a) => a.status === "awaiting_review");
+  if (awaiting.length === 0) {
+    return "";
+  }
+
+  const threshold = family?.reviewHints?.lowConfidenceThreshold ?? 0.8;
+  const lowest = Math.min(...awaiting.map((a) => a.confidence));
+  const hasAmbiguity = awaiting.some(
+    (a) =>
+      a.actionType === "needs_review" ||
+      (a.ambiguityReason && a.ambiguityReason.length > 0),
+  );
+
+  if (hasAmbiguity) {
+    return `<span class="badge warn-badge">ambiguous</span>`;
+  }
+
+  return `<span class="badge ${confidenceClass(lowest, threshold)}">${lowest.toFixed(2)}</span>`;
+}
+
 export function inboxPage(
-  messages: Array<{ message: Message; actionCount: number; awaitingCount: number }>,
+  messages: Array<{
+    message: Message;
+    actionCount: number;
+    awaitingCount: number;
+    actions: ProposedAction[];
+  }>,
+  family?: FamilyConfig,
 ): string {
   const rows =
     messages.length === 0
@@ -20,6 +59,7 @@ export function inboxPage(
               <th>Sender</th>
               <th>Received</th>
               <th>Status</th>
+              <th>Review</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -32,6 +72,7 @@ export function inboxPage(
                 <td>${escapeHtml(item.message.senderEmail)}</td>
                 <td>${escapeHtml(item.message.receivedAt)}</td>
                 <td><span class="badge">${escapeHtml(item.message.status)}</span></td>
+                <td>${messageReviewBadge(item.actions, family)}</td>
                 <td>${item.actionCount} total / ${item.awaitingCount} awaiting</td>
               </tr>`,
               )
@@ -45,10 +86,13 @@ export function inboxPage(
 export function messagePage(
   message: Message,
   actions: ProposedAction[],
+  family?: FamilyConfig,
 ): string {
   const actionCards = actions
-    .map((action) => actionCard(message, action))
+    .map((action) => actionCard(message, action, family))
     .join("");
+
+  const instructions = message.interpretationInstructions ?? "";
 
   const body = `
     <h1>${escapeHtml(message.subject)}</h1>
@@ -57,8 +101,17 @@ export function messagePage(
       <section class="card">
         <h2>Source email</h2>
         <pre class="email-body">${escapeHtml(message.bodyText)}</pre>
-        <form method="post" action="/messages/${message.id}/reprocess" style="margin-top:1rem">
-          <button type="submit">Reprocess with AI</button>
+        <form method="post" action="/messages/${message.id}/instructions" style="margin-top:1rem">
+          <label>Instructions for re-extraction
+            <textarea name="interpretationInstructions" rows="3" placeholder="e.g. Picture day is for 1st grade only">${escapeHtml(instructions)}</textarea>
+          </label>
+          <div class="actions">
+            <button type="submit">Save instructions</button>
+          </div>
+        </form>
+        <form method="post" action="/messages/${message.id}/reprocess" style="margin-top:0.5rem">
+          <input type="hidden" name="interpretationInstructions" value="" id="reprocess-instructions-hidden" />
+          <button type="submit" onclick="document.getElementById('reprocess-instructions-hidden').value=document.querySelector('[name=interpretationInstructions]').value">Reprocess with AI</button>
         </form>
       </section>
       <section>
@@ -70,7 +123,11 @@ export function messagePage(
   return layout(message.subject, NAV, body);
 }
 
-function actionCard(message: Message, action: ProposedAction): string {
+function actionCard(
+  message: Message,
+  action: ProposedAction,
+  family?: FamilyConfig,
+): string {
   if (action.status === "superseded") {
     return `
       <article class="card muted-card">
@@ -78,6 +135,7 @@ function actionCard(message: Message, action: ProposedAction): string {
       </article>`;
   }
 
+  const threshold = family?.reviewHints?.lowConfidenceThreshold ?? 0.8;
   const ambiguity = action.ambiguityReason
     ? `<p class="warn"><strong>Ambiguity:</strong> ${escapeHtml(action.ambiguityReason)}</p>`
     : "";
@@ -95,7 +153,7 @@ function actionCard(message: Message, action: ProposedAction): string {
   return `
     <article class="card">
       <h3>${escapeHtml(action.title)} <span class="badge">${escapeHtml(action.status)}</span></h3>
-      <p class="muted">Confidence: ${action.confidence.toFixed(2)} · Type: ${escapeHtml(action.actionType)}</p>
+      <p class="muted">Confidence: <span class="${confidenceClass(action.confidence, threshold)}">${action.confidence.toFixed(2)}</span> · Type: ${escapeHtml(action.actionType)}</p>
       ${ambiguity}
       ${interpretation}
       ${excerpt}
@@ -160,7 +218,11 @@ function actionTypeOptions(selected: string): string {
     .join("");
 }
 
-export function awaitingPage(actions: ProposedAction[]): string {
+export function awaitingPage(
+  actions: ProposedAction[],
+  family?: FamilyConfig,
+): string {
+  const threshold = family?.reviewHints?.lowConfidenceThreshold ?? 0.8;
   const rows =
     actions.length === 0
       ? "<p class='muted'>Nothing awaiting review.</p>"
@@ -170,25 +232,36 @@ export function awaitingPage(actions: ProposedAction[]): string {
               <th>Title</th>
               <th>Type</th>
               <th>Confidence</th>
+              <th>Flags</th>
               <th>Message</th>
             </tr>
           </thead>
           <tbody>
             ${actions
               .map(
-                (action) => `
+                (action) => {
+                  const flags = [];
+                  if (action.actionType === "needs_review") {
+                    flags.push("needs_review");
+                  }
+                  if (action.ambiguityReason) {
+                    flags.push("ambiguous");
+                  }
+                  return `
               <tr>
                 <td><a href="/messages/${action.messageId}">${escapeHtml(action.title)}</a></td>
                 <td>${escapeHtml(action.actionType)}</td>
-                <td>${action.confidence.toFixed(2)}</td>
+                <td><span class="${confidenceClass(action.confidence, threshold)}">${action.confidence.toFixed(2)}</span></td>
+                <td>${flags.map((f) => `<span class="badge warn-badge">${f}</span>`).join(" ") || "—"}</td>
                 <td><a href="/messages/${action.messageId}">View email</a></td>
-              </tr>`,
+              </tr>`;
+                },
               )
               .join("")}
           </tbody>
         </table>`;
 
-  return layout("Awaiting review", NAV, `<h1>Awaiting review</h1>${rows}`);
+  return layout("Awaiting review", NAV, `<h1>Awaiting review</h1><p class="muted">Sorted by confidence (lowest first).</p>${rows}`);
 }
 
 export function flashPage(title: string, message: string): string {

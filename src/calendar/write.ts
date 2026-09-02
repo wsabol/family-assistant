@@ -6,6 +6,8 @@ import { MessagesRepository } from "../db/repositories/messages.js";
 import { type ApprovedActionPayload } from "../db/repositories/proposed-actions.js";
 import { ProposedActionsRepository } from "../db/repositories/proposed-actions.js";
 import { createCalendarClient } from "./client.js";
+import { isGoogleAuthError } from "../google/oauth.js";
+import { recordAuthFailure } from "../health/monitor.js";
 import {
   actionToApprovedPayload,
   isCalendarWritableAction,
@@ -44,7 +46,12 @@ export async function runCalendarWriter(
     logger.warn({ staleRecovered }, "Recovered stale writing actions");
   }
 
-  const calendar = await createCalendarClient(config.env);
+  const calendar = await createCalendarClient(config.env).catch((error) => {
+    if (isGoogleAuthError(error)) {
+      recordAuthFailure(db, "calendar", error);
+    }
+    throw error;
+  });
   const calendarId = config.family.schoolCalendarId;
 
   const result: WriteCalendarResult = {
@@ -113,7 +120,7 @@ export async function runCalendarWriter(
       actionsRepo.markCompleted(action.id);
       result.created += 1;
 
-      await markGmailProcessed(config, message.gmailMessageId, logger);
+      await markGmailProcessed(config, db, message.gmailMessageId, logger);
 
       logger.info(
         {
@@ -127,6 +134,9 @@ export async function runCalendarWriter(
     } catch (error) {
       result.failed += 1;
       actionsRepo.markFailed(action.id);
+      if (isGoogleAuthError(error)) {
+        recordAuthFailure(db, "calendar", error);
+      }
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       logger.error(
@@ -142,6 +152,7 @@ export async function runCalendarWriter(
 
 async function markGmailProcessed(
   config: AppConfig,
+  db: import("better-sqlite3").Database,
   gmailMessageId: string,
   logger: Logger,
 ): Promise<void> {
@@ -163,6 +174,9 @@ async function markGmailProcessed(
       queuedLabelId ? [queuedLabelId] : [],
     );
   } catch (error) {
+    if (isGoogleAuthError(error)) {
+      recordAuthFailure(db, "gmail", error);
+    }
     const message = error instanceof Error ? error.message : String(error);
     logger.warn(
       { gmailMessageId, error: message },

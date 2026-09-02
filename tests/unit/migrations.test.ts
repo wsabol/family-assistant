@@ -46,6 +46,7 @@ describe("runMigrations", () => {
 
       expect(tables.map((row) => row.name)).toEqual([
         "calendar_links",
+        "health_incidents",
         "messages",
         "proposed_actions",
         "schema_migrations",

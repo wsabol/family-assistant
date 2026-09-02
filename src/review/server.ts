@@ -31,15 +31,16 @@ export function createReviewApp(
         message,
         actionCount: actions.length,
         awaitingCount: actions.filter((a) => a.status === "awaiting_review").length,
+        actions,
       };
     });
 
-    res.type("html").send(inboxPage(messages));
+    res.type("html").send(inboxPage(messages, config.family));
   });
 
   app.get("/actions/awaiting", (_req, res) => {
-    const actions = actionsRepo.listByStatus("awaiting_review");
-    res.type("html").send(awaitingPage(actions));
+    const actions = actionsRepo.listAwaitingReviewSorted(config.family);
+    res.type("html").send(awaitingPage(actions, config.family));
   });
 
   app.get("/messages/:id", (req, res) => {
@@ -52,14 +53,26 @@ export function createReviewApp(
     }
 
     const actions = actionsRepo.listByMessageId(messageId);
-    res.type("html").send(messagePage(message, actions));
+    res.type("html").send(messagePage(message, actions, config.family));
+  });
+
+  app.post("/messages/:id/instructions", (req, res) => {
+    const messageId = Number(req.params.id);
+    const body = req.body as Record<string, string | undefined>;
+    const instructions = body.interpretationInstructions?.trim() || null;
+    messagesRepo.setInterpretationInstructions(messageId, instructions);
+    res.redirect(`/messages/${messageId}`);
   });
 
   app.post("/messages/:id/reprocess", async (req, res) => {
     const messageId = Number(req.params.id);
+    const body = req.body as Record<string, string | undefined>;
+    const instructions = body.interpretationInstructions?.trim() || null;
 
     try {
-      await reprocessMessage(config, db, messageId, logger);
+      await reprocessMessage(config, db, messageId, logger, {
+        interpretationInstructions: instructions,
+      });
       res.redirect(`/messages/${messageId}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

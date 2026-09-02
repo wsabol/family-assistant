@@ -1,0 +1,32 @@
+{
+  "jobs": [
+    {
+      "name": "watcher",
+      "command": "watch",
+      "intervalSeconds": 300,
+      "runAtLoad": true
+    },
+    {
+      "name": "worker",
+      "command": "work",
+      "intervalSeconds": 300,
+      "runAtLoad": true
+    },
+    {
+      "name": "calendar-writer",
+      "command": "write-calendar",
+      "intervalSeconds": 300,
+      "runAtLoad": true
+    },
+    {
+      "name": "digest",
+      "command": "digest",
+      "cron": "0 20 * * *"
+    },
+    {
+      "name": "health",
+      "command": "health",
+      "intervalSeconds": 900
+    }
+  ]
+}

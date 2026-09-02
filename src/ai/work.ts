@@ -55,6 +55,7 @@ export async function runWorker(
         receivedAt: message.receivedAt,
         bodyText: message.bodyText,
         family: config.family,
+        interpretationInstructions: message.interpretationInstructions,
       });
 
       const { result: extraction, modelName, rawJson } = await extractWithOpenAI(
@@ -163,6 +164,7 @@ export async function reprocessMessage(
   db: import("better-sqlite3").Database,
   messageId: number,
   logger: Logger,
+  options?: { interpretationInstructions?: string | null },
 ): Promise<void> {
   const messagesRepo = new MessagesRepository(db);
   const actionsRepo = new ProposedActionsRepository(db);
@@ -170,6 +172,13 @@ export async function reprocessMessage(
   const message = messagesRepo.findById(messageId);
   if (!message) {
     throw new Error(`Message not found: ${messageId}`);
+  }
+
+  if (options?.interpretationInstructions !== undefined) {
+    messagesRepo.setInterpretationInstructions(
+      messageId,
+      options.interpretationInstructions,
+    );
   }
 
   const superseded = actionsRepo.supersedeForMessage(messageId);

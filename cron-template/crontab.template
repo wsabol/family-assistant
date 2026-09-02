@@ -1,0 +1,5 @@
+# Family Assistant scheduled jobs
+# Project: {{PROJECT_ROOT}}
+# Install: npm run scheduler:install
+
+{{CRON_LINES}}
