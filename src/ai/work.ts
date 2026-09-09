@@ -12,6 +12,7 @@ export interface WorkResult {
   processed: number;
   failed: number;
   actionsCreated: number;
+  actionsAutoApproved: number;
 }
 
 export async function runWorker(
@@ -34,6 +35,7 @@ export async function runWorker(
     processed: 0,
     failed: 0,
     actionsCreated: 0,
+    actionsAutoApproved: 0,
   };
 
   const batchLimit = config.env.WORK_BATCH_LIMIT;
@@ -116,7 +118,7 @@ function persistExtraction(
     extraction.emailClassification === "informational" &&
     extraction.actions.length === 0
   ) {
-    actionsRepo.create({
+    const input = {
       messageId,
       actionType: "informational",
       childName: null,
@@ -132,13 +134,15 @@ function persistExtraction(
       interpretationSummary: extraction.summary,
       sourceExcerpt: extraction.summary.slice(0, 300),
       originalPayloadJson: rawJson,
-    });
+    } satisfies import("../db/repositories/proposed-actions.js").CreateProposedActionInput;
+    const actionId = actionsRepo.create(input);
+    autoApproveIfPerfectConfidence(actionsRepo, actionId, input, result);
     result.actionsCreated += 1;
     return;
   }
 
   for (const action of extraction.actions) {
-    actionsRepo.create({
+    const input = {
       messageId,
       actionType: action.actionType,
       childName: action.childName,
@@ -154,9 +158,35 @@ function persistExtraction(
       interpretationSummary: action.interpretationSummary,
       sourceExcerpt: action.sourceExcerpt,
       originalPayloadJson: JSON.stringify(action),
-    });
+    } satisfies import("../db/repositories/proposed-actions.js").CreateProposedActionInput;
+    const actionId = actionsRepo.create(input);
+    autoApproveIfPerfectConfidence(actionsRepo, actionId, input, result);
     result.actionsCreated += 1;
   }
+}
+
+function autoApproveIfPerfectConfidence(
+  actionsRepo: ProposedActionsRepository,
+  actionId: number,
+  input: import("../db/repositories/proposed-actions.js").CreateProposedActionInput,
+  result: WorkResult,
+): void {
+  if (input.confidence !== 1) {
+    return;
+  }
+
+  actionsRepo.approve(actionId, {
+    actionType: input.actionType,
+    childName: input.childName,
+    title: input.title,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    allDay: input.allDay,
+    location: input.location,
+    description: input.description,
+    reminderOffsetsMinutes: input.reminderOffsetsMinutes,
+  });
+  result.actionsAutoApproved += 1;
 }
 
 export async function reprocessMessage(

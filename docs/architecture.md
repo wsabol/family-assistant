@@ -1,6 +1,6 @@
 # Architecture
 
-Family Assistant is a local pipeline that turns labeled school emails into reviewed Google Calendar events. Each stage has a narrow responsibility; crossing boundaries (for example, the worker writing to Calendar) is intentionally prevented.
+Family Assistant is a local pipeline that turns labeled school emails into approved Google Calendar events. Each stage has a narrow responsibility; crossing boundaries (for example, the worker writing to Calendar) is intentionally prevented.
 
 ## Pipeline overview
 
@@ -10,8 +10,10 @@ flowchart LR
   Watch --> Queue[(SQLite messages)]
   Queue --> Work[work / AI]
   Work --> Proposed[(proposed_actions)]
-  Proposed --> Review[review UI / CLI]
-  Review -->|approved| Approved[approved actions]
+  Proposed --> AutoApprove{confidence 1.0?}
+  AutoApprove -->|yes| Approved[approved actions]
+  AutoApprove -->|no| Review[review UI / CLI]
+  Review -->|approved| Approved
   Approved --> Write[write-calendar]
   Write --> Calendar[Google Calendar]
   Write --> Links[(calendar_links)]
@@ -22,15 +24,15 @@ flowchart LR
 | Command | Module | Responsibility |
 |---------|--------|----------------|
 | `watch` | `src/gmail/` | Poll Gmail, normalize messages, dedupe by `gmail_message_id`, queue for processing |
-| `work` | `src/ai/` | Claim queued messages, call OpenAI with structured output, store proposed actions |
-| `review` | `src/review/` | Local web UI (localhost) and CLI approve/reject; preserve original vs approved payloads |
+| `work` | `src/ai/` | Claim queued messages, call OpenAI with structured output, store proposed actions, auto-approve confidence `1.0` proposals |
+| `review` | `src/review/` | Local web UI (localhost) and CLI approve/reject for actions that are not auto-approved; preserve original vs approved payloads |
 | `write-calendar` | `src/calendar/` | Create events only for `approved` actions; idempotent via `calendar_links` |
 
 ### Boundaries
 
 - **Watcher** does not call AI or Calendar.
-- **Worker** does not write Calendar.
-- **Calendar writer** only processes explicitly approved actions and skips actions that already have a calendar link.
+- **Worker** does not write Calendar; it only auto-approves proposed actions when confidence is exactly `1.0`.
+- **Calendar writer** only processes approved actions and skips actions that already have a calendar link.
 
 ## Data model
 
@@ -45,7 +47,7 @@ Key tables:
 Audit fields:
 
 - `original_payload_json` — never overwritten (AI output at extraction time)
-- `approved_payload_json` — set when a human approves or edits from the review UI
+- `approved_payload_json` — set when an action is auto-approved, or when a human approves or edits from the review UI
 
 ## Reprocessing
 

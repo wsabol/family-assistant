@@ -150,7 +150,7 @@ program
       runMigrations(db);
       const result = await runWorker(config, db, logger);
       console.log(
-        `Work complete: claimed=${result.claimed} processed=${result.processed} failed=${result.failed} actions=${result.actionsCreated}`,
+        `Work complete: claimed=${result.claimed} processed=${result.processed} failed=${result.failed} actions=${result.actionsCreated} autoApproved=${result.actionsAutoApproved}`,
       );
     } finally {
       db.close();

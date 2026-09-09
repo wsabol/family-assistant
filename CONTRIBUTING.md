@@ -105,7 +105,7 @@ Helpful contributions include:
 
 Out of scope for the current MVP (but may be discussed in issues):
 
-- Auto-approving AI actions without human review
+- Auto-approving AI actions below perfect confidence without human review
 - Sending or replying to email
 - Remote multi-user access
 
