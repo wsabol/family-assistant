@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "../../src/domain/message.js";
 import type { ProposedAction } from "../../src/domain/proposed-action.js";
 import {
+  buildGmailMessageUrl,
+  mergeEventDescriptions,
   formatEventTitle,
   isCalendarWritableAction,
   mapToGoogleEvent,
@@ -104,7 +106,22 @@ describe("mapToGoogleEvent", () => {
     expect(event.summary).toBe("Harlee Field Trip");
     expect(event.start.dateTime).toBe("2026-03-10T14:00:00.000Z");
     expect(event.end.dateTime).toBeTruthy();
-    expect(event.description).toContain("gmail-123");
+    expect(event.description).toBe(
+      [
+        "For: Harlee",
+        "",
+        "Bring lunch",
+        "",
+        `Gmail: ${buildGmailMessageUrl("gmail-123")}`,
+        "Created by Family Assistant.",
+      ].join("\n"),
+    );
+    expect(event.description).not.toContain("Source:");
+    expect(event.description).not.toContain("From:");
+    expect(event.description).not.toContain("Received:");
+    expect(event).not.toHaveProperty("attendees");
+    expect(event).not.toHaveProperty("conferenceData");
+    expect(event).not.toHaveProperty("hangoutLink");
   });
 
   it("maps all-day events with exclusive end date", () => {
@@ -129,6 +146,77 @@ describe("mapToGoogleEvent", () => {
 
     expect(event.start.date).toBe("2026-03-10");
     expect(event.end.date).toBe("2026-03-11");
+  });
+
+  it("does not add leading blank lines when an event has no child", () => {
+    const action = buildAction({
+      childName: null,
+      description: "School-wide fundraiser",
+    });
+    const event = mapToGoogleEvent(
+      {
+        actionType: action.actionType,
+        childName: action.childName,
+        title: action.title,
+        startAt: action.startAt,
+        endAt: action.endAt,
+        allDay: action.allDay,
+        location: action.location,
+        description: action.description,
+        reminderOffsetsMinutes: action.reminderOffsetsMinutes,
+      },
+      message,
+      family,
+    );
+
+    expect(event.description.startsWith("\n")).toBe(false);
+    expect(event.description).toContain("School-wide fundraiser");
+  });
+});
+
+describe("mergeEventDescriptions", () => {
+  it("incorporates new email details and Gmail links without duplicating the footer", () => {
+    const merged = mergeEventDescriptions(
+      [
+        "For: Harlee",
+        "",
+        "Bring lunch",
+        "",
+        "Gmail: https://mail.google.com/mail/u/0/#all/original",
+        "Created by Family Assistant.",
+      ].join("\n"),
+      [
+        "For: Harlee",
+        "",
+        "Bus leaves at 8:15.",
+        "",
+        "Gmail: https://mail.google.com/mail/u/0/#all/update",
+        "Created by Family Assistant.",
+      ].join("\n"),
+    );
+
+    expect(merged).toBe(
+      [
+        "For: Harlee",
+        "Bring lunch",
+        "Bus leaves at 8:15.",
+        "",
+        "Gmail: https://mail.google.com/mail/u/0/#all/original",
+        "Gmail: https://mail.google.com/mail/u/0/#all/update",
+        "Created by Family Assistant.",
+      ].join("\n"),
+    );
+  });
+
+  it("normalizes old metadata footers into the current Gmail link format", () => {
+    const merged = mergeEventDescriptions(
+      "For: Harlee\nCreated by Family Executive Assistant.\nGmail message ID: gmail-123",
+      "For: Harlee\nCreated by Family Assistant.",
+    );
+
+    expect(merged).toContain(`Gmail: ${buildGmailMessageUrl("gmail-123")}`);
+    expect(merged).not.toContain("Gmail message ID:");
+    expect(merged).not.toContain("Family Executive Assistant");
   });
 });
 

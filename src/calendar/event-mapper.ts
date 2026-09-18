@@ -51,19 +51,93 @@ export function buildEventDescription(
   payload: ApprovedActionPayload,
   message: Message,
 ): string {
-  const lines = [
-    payload.childName ? `For: ${payload.childName}` : null,
-    `Source: ${message.subject}`,
-    `From: ${message.senderName ? `${message.senderName} <${message.senderEmail}>` : message.senderEmail}`,
-    `Received: ${message.receivedAt}`,
-    "",
-    payload.description ?? payload.title,
-    "",
-    "Created by Family Executive Assistant.",
-    `Gmail message ID: ${message.gmailMessageId}`,
-  ].filter((line): line is string => line !== null);
+  const detailLines = (payload.description ?? payload.title)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const headerLines = payload.childName ? [`For: ${payload.childName}`] : [];
+  const footerLines = [
+    `Gmail: ${buildGmailMessageUrl(message.gmailMessageId)}`,
+    "Created by Family Assistant.",
+  ];
 
-  return lines.join("\n");
+  return joinDescriptionSections(headerLines, detailLines, footerLines);
+}
+
+export function buildGmailMessageUrl(gmailMessageId: string): string {
+  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(gmailMessageId)}`;
+}
+
+export function mergeEventDescriptions(
+  existingDescription: string | null | undefined,
+  incomingDescription: string,
+): string {
+  const existing = splitDescription(existingDescription ?? "");
+  const incoming = splitDescription(incomingDescription);
+  const detailLines = uniqueLines([...existing.details, ...incoming.details]);
+  const gmailLines = uniqueLines([...existing.gmailLines, ...incoming.gmailLines]);
+
+  return joinDescriptionSections(
+    detailLines,
+    [...gmailLines, "Created by Family Assistant."],
+  );
+}
+
+function joinDescriptionSections(...sections: string[][]): string {
+  return sections
+    .filter((section) => section.length > 0)
+    .map((section) => section.join("\n"))
+    .join("\n\n");
+}
+
+function splitDescription(description: string): {
+  details: string[];
+  gmailLines: string[];
+} {
+  const details: string[] = [];
+  const gmailLines: string[] = [];
+
+  for (const line of description.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (trimmed === "Created by Family Assistant.") {
+      continue;
+    }
+    if (trimmed === "Created by Family Executive Assistant.") {
+      continue;
+    }
+    if (trimmed.startsWith("Gmail: ")) {
+      gmailLines.push(trimmed);
+      continue;
+    }
+    if (trimmed.startsWith("Gmail message ID: ")) {
+      gmailLines.push(
+        `Gmail: ${buildGmailMessageUrl(trimmed.slice("Gmail message ID: ".length))}`,
+      );
+      continue;
+    }
+    details.push(trimmed);
+  }
+
+  return { details, gmailLines };
+}
+
+function uniqueLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+
+  for (const line of lines) {
+    const key = line.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(line);
+  }
+
+  return unique;
 }
 
 export function resolveReminderMinutes(
@@ -102,6 +176,9 @@ export interface GoogleCalendarEventInput {
   summary: string;
   description: string;
   location?: string;
+  attendees?: never;
+  conferenceData?: never;
+  hangoutLink?: never;
   start: { dateTime?: string; date?: string; timeZone?: string };
   end: { dateTime?: string; date?: string; timeZone?: string };
   reminders?: {
