@@ -4,6 +4,7 @@ import { zodResponseFormat } from "openai/helpers/zod";
 import { type EnvConfig } from "../config.js";
 import {
   extractionResultSchema,
+  normalizeExtractionResult,
   type ExtractionResult,
 } from "./schemas.js";
 
@@ -36,7 +37,9 @@ export async function extractWithOpenAI(
   }
 
   const parsedJson = JSON.parse(content) as unknown;
-  const validated = extractionResultSchema.parse(parsedJson);
+  const validated = normalizeExtractionResult(
+    extractionResultSchema.parse(parsedJson),
+  );
   const rawJson = content;
 
   return { result: validated, modelName, rawJson };

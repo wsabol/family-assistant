@@ -4,6 +4,7 @@ import { type AppConfig } from "../config.js";
 import { MessagesRepository } from "../db/repositories/messages.js";
 import { ProposedActionsRepository } from "../db/repositories/proposed-actions.js";
 import { extractWithOpenAI } from "./client.js";
+import { classifyEventRelationship } from "./dedupe.js";
 import { buildUserPrompt, loadSystemPrompt } from "./prompts.js";
 import { PROMPT_VERSION } from "./schemas.js";
 
@@ -38,6 +39,7 @@ export async function runWorker(
 
   const batchLimit = config.env.WORK_BATCH_LIMIT;
   const systemPrompt = loadSystemPrompt();
+  const dedupePrompt = loadSystemPrompt("school-event-dedupe-v1");
 
   for (let i = 0; i < batchLimit; i++) {
     const message = messagesRepo.claimNextQueued();
@@ -64,12 +66,15 @@ export async function runWorker(
         userPrompt,
       );
 
-      persistExtraction(
+      await persistExtraction(
+        config,
         actionsRepo,
         message.id,
         extraction,
         rawJson,
         result,
+        dedupePrompt,
+        message.subject,
       );
 
       messagesRepo.markProcessed(message.id, modelName, PROMPT_VERSION);
@@ -105,13 +110,16 @@ export async function runWorker(
   return result;
 }
 
-function persistExtraction(
+async function persistExtraction(
+  config: AppConfig,
   actionsRepo: ProposedActionsRepository,
   messageId: number,
   extraction: import("./schemas.js").ExtractionResult,
   rawJson: string,
   result: WorkResult,
-): void {
+  dedupePrompt: string,
+  sourceSubject: string,
+): Promise<void> {
   if (
     extraction.emailClassification === "informational" &&
     extraction.actions.length === 0
@@ -138,6 +146,24 @@ function persistExtraction(
   }
 
   for (const action of extraction.actions) {
+    const candidates = actionsRepo.listCalendarMemoryCandidates(
+      action.startAt,
+      action.childName,
+    );
+    const match = await classifyEventRelationship(
+      config.env,
+      dedupePrompt,
+      sourceSubject,
+      action,
+      candidates,
+    );
+    const automatic =
+      action.actionType !== "needs_review" &&
+      action.confidence >= 0.8 &&
+      match.confidence >= 0.9 &&
+      (match.relationship === "same_event" ||
+        match.relationship === "event_update");
+
     actionsRepo.create({
       messageId,
       actionType: action.actionType,
@@ -154,6 +180,11 @@ function persistExtraction(
       interpretationSummary: action.interpretationSummary,
       sourceExcerpt: action.sourceExcerpt,
       originalPayloadJson: JSON.stringify(action),
+      matchedActionId: match.matchedActionId,
+      eventRelationship: match.relationship,
+      dedupeReasoning: match.reasoning,
+      dedupeConfidence: match.confidence,
+      status: automatic ? "approved" : "awaiting_review",
     });
     result.actionsCreated += 1;
   }

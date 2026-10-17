@@ -1,4 +1,5 @@
 import type {
+  EventRelationship,
   ProposedAction,
   ProposedActionStatus,
   ProposedActionType,
@@ -20,6 +21,10 @@ export interface ProposedActionRow {
   ambiguity_reason: string | null;
   interpretation_summary: string | null;
   source_excerpt: string | null;
+  matched_action_id: number | null;
+  event_relationship: EventRelationship | null;
+  dedupe_reasoning: string | null;
+  dedupe_confidence: number | null;
   original_payload_json: string;
   approved_payload_json: string | null;
   status: ProposedActionStatus;
@@ -45,6 +50,10 @@ export function mapProposedActionRow(row: ProposedActionRow): ProposedAction {
     ambiguityReason: row.ambiguity_reason,
     interpretationSummary: row.interpretation_summary,
     sourceExcerpt: row.source_excerpt,
+    matchedActionId: row.matched_action_id,
+    eventRelationship: row.event_relationship,
+    dedupeReasoning: row.dedupe_reasoning,
+    dedupeConfidence: row.dedupe_confidence,
     originalPayloadJson: row.original_payload_json,
     approvedPayloadJson: row.approved_payload_json,
     status: row.status,
@@ -70,6 +79,19 @@ export interface CreateProposedActionInput {
   interpretationSummary: string | null;
   sourceExcerpt: string | null;
   originalPayloadJson: string;
+  matchedActionId?: number | null;
+  eventRelationship?: EventRelationship | null;
+  dedupeReasoning?: string | null;
+  dedupeConfidence?: number | null;
+  status?: "awaiting_review" | "approved";
+}
+
+export interface CalendarMemoryCandidate {
+  action: ProposedAction;
+  sourceSubject: string;
+  googleCalendarId: string;
+  googleEventId: string;
+  eventHtmlLink: string | null;
 }
 
 export interface ApprovedActionPayload {
@@ -106,9 +128,15 @@ export class ProposedActionsRepository {
           ambiguity_reason,
           interpretation_summary,
           source_excerpt,
+          matched_action_id,
+          event_relationship,
+          dedupe_reasoning,
+          dedupe_confidence,
           original_payload_json,
-          status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'awaiting_review')
+          approved_payload_json,
+          status,
+          reviewed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 'approved' THEN datetime('now') ELSE NULL END)
         `,
       )
       .run(
@@ -126,7 +154,24 @@ export class ProposedActionsRepository {
         input.ambiguityReason,
         input.interpretationSummary,
         input.sourceExcerpt,
+        input.matchedActionId ?? null,
+        input.eventRelationship ?? null,
+        input.dedupeReasoning ?? null,
+        input.dedupeConfidence ?? null,
         input.originalPayloadJson,
+        input.status === "approved" ? JSON.stringify({
+          actionType: input.actionType,
+          childName: input.childName,
+          title: input.title,
+          startAt: input.startAt,
+          endAt: input.endAt,
+          allDay: input.allDay,
+          location: input.location,
+          description: input.description,
+          reminderOffsetsMinutes: input.reminderOffsetsMinutes,
+        }) : null,
+        input.status ?? "awaiting_review",
+        input.status ?? "awaiting_review",
       );
 
     return Number(result.lastInsertRowid);
@@ -137,6 +182,57 @@ export class ProposedActionsRepository {
       .prepare("SELECT * FROM proposed_actions WHERE id = ?")
       .get(id) as ProposedActionRow | undefined;
     return row ? mapProposedActionRow(row) : null;
+  }
+
+  listCalendarMemoryCandidates(
+    startAt: string | null,
+    childName: string | null,
+    limit = 30,
+  ): CalendarMemoryCandidate[] {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT pa.*, m.subject AS source_subject,
+               cl.google_calendar_id, cl.google_event_id, cl.event_html_link
+        FROM proposed_actions pa
+        JOIN messages m ON m.id = pa.message_id
+        JOIN calendar_links cl ON cl.proposed_action_id = pa.id
+        WHERE pa.status = 'completed'
+        ORDER BY
+          CASE WHEN ? IS NOT NULL AND LOWER(pa.child_name) = LOWER(?) THEN 0 ELSE 1 END,
+          CASE
+            WHEN ? IS NOT NULL AND pa.start_at IS NOT NULL
+            THEN ABS(julianday(pa.start_at) - julianday(?))
+            ELSE 999999
+          END,
+          pa.completed_at DESC
+        LIMIT ?
+        `,
+      )
+      .all(childName, childName, startAt, startAt, limit) as Array<
+        ProposedActionRow & {
+          google_calendar_id: string;
+          google_event_id: string;
+          event_html_link: string | null;
+          source_subject: string;
+        }
+      >;
+
+    const candidates = rows.map((row) => ({
+      action: mapProposedActionRow(row),
+      sourceSubject: row.source_subject,
+      googleCalendarId: row.google_calendar_id,
+      googleEventId: row.google_event_id,
+      eventHtmlLink: row.event_html_link,
+    }));
+
+    const uniqueByEvent = new Map<string, CalendarMemoryCandidate>();
+    for (const candidate of candidates) {
+      if (!uniqueByEvent.has(candidate.googleEventId)) {
+        uniqueByEvent.set(candidate.googleEventId, candidate);
+      }
+    }
+    return [...uniqueByEvent.values()];
   }
 
   listByMessageId(messageId: number): ProposedAction[] {
@@ -262,6 +358,39 @@ export class ProposedActionsRepository {
             status = 'approved',
             reviewed_at = datetime('now')
         WHERE id = ? AND status = 'awaiting_review'
+        `,
+      )
+      .run(
+        payload.actionType,
+        payload.childName,
+        payload.title,
+        payload.startAt,
+        payload.endAt,
+        payload.allDay ? 1 : 0,
+        payload.location,
+        payload.description,
+        JSON.stringify(payload.reminderOffsetsMinutes),
+        JSON.stringify(payload),
+        id,
+      );
+  }
+
+  setResolvedPayload(id: number, payload: ApprovedActionPayload): void {
+    this.db
+      .prepare(
+        `
+        UPDATE proposed_actions
+        SET action_type = ?,
+            child_name = ?,
+            title = ?,
+            start_at = ?,
+            end_at = ?,
+            all_day = ?,
+            location = ?,
+            description = ?,
+            reminder_offsets_minutes = ?,
+            approved_payload_json = ?
+        WHERE id = ? AND status = 'writing'
         `,
       )
       .run(

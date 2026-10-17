@@ -10,8 +10,11 @@ import { isGoogleAuthError } from "../google/oauth.js";
 import { recordAuthFailure } from "../health/monitor.js";
 import {
   actionToApprovedPayload,
+  describeEventRevision,
   isCalendarWritableAction,
   mapToGoogleEvent,
+  mergeEventUpdatePayload,
+  prependEventRevision,
 } from "./event-mapper.js";
 import {
   applyMessageLabels,
@@ -25,6 +28,7 @@ import {
 export interface WriteCalendarResult {
   claimed: number;
   created: number;
+  updated: number;
   skipped: number;
   failed: number;
 }
@@ -57,6 +61,7 @@ export async function runCalendarWriter(
   const result: WriteCalendarResult = {
     claimed: 0,
     created: 0,
+    updated: 0,
     skipped: 0,
     failed: 0,
   };
@@ -77,7 +82,61 @@ export async function runCalendarWriter(
       continue;
     }
 
-    const payload = actionToApprovedPayload(action);
+    let payload = actionToApprovedPayload(action);
+
+    if (
+      action.eventRelationship === "same_event" &&
+      action.matchedActionId !== null
+    ) {
+      const matchedLink = linksRepo.findByActionId(action.matchedActionId);
+      if (!matchedLink) {
+        actionsRepo.markFailed(action.id);
+        result.failed += 1;
+        continue;
+      }
+
+      linksRepo.create(
+        action.id,
+        matchedLink.googleCalendarId,
+        matchedLink.googleEventId,
+        matchedLink.eventHtmlLink,
+      );
+      actionsRepo.markCompleted(action.id);
+      result.skipped += 1;
+
+      const duplicateMessage = messagesRepo.findById(action.messageId);
+      if (duplicateMessage) {
+        await markGmailProcessed(
+          config,
+          db,
+          duplicateMessage.gmailMessageId,
+          logger,
+        );
+      }
+      continue;
+    }
+
+    const matchedAction =
+      action.eventRelationship === "event_update" &&
+      action.matchedActionId !== null
+        ? actionsRepo.findById(action.matchedActionId)
+        : null;
+    const matchedLink = matchedAction
+      ? linksRepo.findByActionId(matchedAction.id)
+      : null;
+
+    if (action.eventRelationship === "event_update") {
+      if (!matchedAction || !matchedLink) {
+        actionsRepo.markFailed(action.id);
+        result.failed += 1;
+        continue;
+      }
+      payload = mergeEventUpdatePayload(
+        actionToApprovedPayload(matchedAction),
+        payload,
+      );
+      actionsRepo.setResolvedPayload(action.id, payload);
+    }
 
     if (!isCalendarWritableAction(payload)) {
       actionsRepo.markFailed(action.id);
@@ -98,6 +157,51 @@ export async function runCalendarWriter(
 
     try {
       const eventBody = mapToGoogleEvent(payload, message, config.family);
+
+      if (matchedAction && matchedLink) {
+        const previousPayload = actionToApprovedPayload(matchedAction);
+        const currentEvent = await withRetry(() =>
+          calendar.events.get({
+            calendarId: matchedLink.googleCalendarId,
+            eventId: matchedLink.googleEventId,
+          }),
+        );
+        const revision = describeEventRevision(previousPayload, payload);
+        eventBody.description = prependEventRevision(
+          currentEvent.data.description ?? eventBody.description,
+          dateInTimeZone(new Date(), config.family.timezone),
+          revision,
+        );
+
+        const response = await withRetry(() =>
+          calendar.events.update({
+            calendarId: matchedLink.googleCalendarId,
+            eventId: matchedLink.googleEventId,
+            requestBody: eventBody,
+          }),
+        );
+
+        linksRepo.create(
+          action.id,
+          matchedLink.googleCalendarId,
+          matchedLink.googleEventId,
+          response.data.htmlLink ?? matchedLink.eventHtmlLink,
+        );
+        actionsRepo.markCompleted(action.id);
+        result.updated += 1;
+        await markGmailProcessed(config, db, message.gmailMessageId, logger);
+
+        logger.info(
+          {
+            operation: "update_event",
+            proposedActionId: action.id,
+            matchedActionId: matchedAction.id,
+            googleEventId: matchedLink.googleEventId,
+          },
+          "Updated calendar event",
+        );
+        continue;
+      }
 
       const response = await withRetry(() =>
         calendar.events.insert({
@@ -148,6 +252,17 @@ export async function runCalendarWriter(
 
   logger.info(result, "Calendar writer completed");
   return result;
+}
+
+function dateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function markGmailProcessed(

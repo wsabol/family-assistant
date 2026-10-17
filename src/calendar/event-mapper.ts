@@ -23,6 +23,62 @@ export function actionToApprovedPayload(
   };
 }
 
+export function mergeEventUpdatePayload(
+  previous: ApprovedActionPayload,
+  update: ApprovedActionPayload,
+): ApprovedActionPayload {
+  const startChanged =
+    update.startAt !== null && update.startAt !== previous.startAt;
+
+  return {
+    actionType: update.actionType,
+    childName: update.childName ?? previous.childName,
+    title: update.title || previous.title,
+    startAt: update.startAt ?? previous.startAt,
+    endAt: update.endAt ?? (startChanged ? null : previous.endAt),
+    allDay: update.startAt === null ? previous.allDay : update.allDay,
+    location: update.location ?? previous.location,
+    description: update.description ?? previous.description,
+    reminderOffsetsMinutes:
+      update.reminderOffsetsMinutes.length > 0
+        ? update.reminderOffsetsMinutes
+        : previous.reminderOffsetsMinutes,
+  };
+}
+
+export function describeEventRevision(
+  previous: ApprovedActionPayload,
+  update: ApprovedActionPayload,
+): string {
+  const changes: string[] = [];
+
+  if (previous.title !== update.title) {
+    changes.push(`Title changed from "${previous.title}" to "${update.title}".`);
+  }
+  if (previous.startAt !== update.startAt) {
+    changes.push(`Start changed from ${previous.startAt ?? "unspecified"} to ${update.startAt ?? "unspecified"}.`);
+  }
+  if (previous.endAt !== update.endAt) {
+    changes.push(`End changed from ${previous.endAt ?? "unspecified"} to ${update.endAt ?? "unspecified"}.`);
+  }
+  if (previous.location !== update.location) {
+    changes.push(`Location changed from ${previous.location ?? "unspecified"} to ${update.location ?? "unspecified"}.`);
+  }
+  if (previous.description !== update.description && update.description) {
+    changes.push(`Details updated: ${update.description}`);
+  }
+
+  return changes.join(" ") || "Event details confirmed by a new source message.";
+}
+
+export function prependEventRevision(
+  description: string,
+  date: string,
+  revision: string,
+): string {
+  return `UPDATE ${date}:\n${revision}\n\n${description}`;
+}
+
 export function formatEventTitle(
   payload: ApprovedActionPayload,
 ): string {
@@ -30,15 +86,7 @@ export function formatEventTitle(
 
   switch (payload.actionType) {
     case "school_closure":
-      return "School Closed";
-    case "deadline":
-      return payload.childName
-        ? `Permission Slip Due — ${payload.childName}`
-        : payload.title;
-    case "bring_item":
-      return payload.childName
-        ? `Bring Item — ${payload.childName}`
-        : payload.title;
+      return payload.title;
     default:
       if (payload.title.toLowerCase().startsWith(payload.childName?.toLowerCase() ?? "")) {
         return payload.title;
