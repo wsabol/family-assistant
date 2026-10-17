@@ -169,7 +169,7 @@ program
       runMigrations(db);
       const result = await runCalendarWriter(config, db, logger);
       console.log(
-        `Calendar write complete: claimed=${result.claimed} created=${result.created} skipped=${result.skipped} failed=${result.failed}`,
+        `Calendar write complete: claimed=${result.claimed} created=${result.created} updated=${result.updated} skipped=${result.skipped} failed=${result.failed}`,
       );
     } finally {
       db.close();

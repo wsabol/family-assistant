@@ -4,10 +4,13 @@ import type { Message } from "../../src/domain/message.js";
 import type { ProposedAction } from "../../src/domain/proposed-action.js";
 import {
   buildGmailMessageUrl,
+  describeEventRevision,
   mergeEventDescriptions,
   formatEventTitle,
   isCalendarWritableAction,
   mapToGoogleEvent,
+  mergeEventUpdatePayload,
+  prependEventRevision,
 } from "../../src/calendar/event-mapper.js";
 
 const family = {
@@ -57,6 +60,10 @@ function buildAction(overrides: Partial<ProposedAction> = {}): ProposedAction {
     ambiguityReason: null,
     interpretationSummary: "Friday interpreted as next Friday",
     sourceExcerpt: "field trip next Friday at 2pm",
+    matchedActionId: null,
+    eventRelationship: null,
+    dedupeReasoning: null,
+    dedupeConfidence: null,
     originalPayloadJson: "{}",
     approvedPayloadJson: null,
     status: "approved",
@@ -83,6 +90,32 @@ describe("formatEventTitle", () => {
     };
 
     expect(formatEventTitle(payload)).toBe("Harlee Field Trip");
+  });
+
+  it("preserves the specific title for deadlines and bring-item actions", () => {
+    const action = buildAction();
+    const payload = {
+      actionType: "deadline" as const,
+      childName: action.childName,
+      title: "Submit Course Selection Sheets",
+      startAt: action.startAt,
+      endAt: action.endAt,
+      allDay: action.allDay,
+      location: action.location,
+      description: action.description,
+      reminderOffsetsMinutes: action.reminderOffsetsMinutes,
+    };
+
+    expect(formatEventTitle(payload)).toBe(
+      "Harlee Submit Course Selection Sheets",
+    );
+    expect(
+      formatEventTitle({
+        ...payload,
+        actionType: "bring_item",
+        title: "Bring Choir Uniform",
+      }),
+    ).toBe("Harlee Bring Choir Uniform");
   });
 });
 
@@ -217,6 +250,75 @@ describe("mergeEventDescriptions", () => {
     expect(merged).toContain(`Gmail: ${buildGmailMessageUrl("gmail-123")}`);
     expect(merged).not.toContain("Gmail message ID:");
     expect(merged).not.toContain("Family Executive Assistant");
+  });
+});
+
+describe("event updates", () => {
+  it("merges partial updates and resets the old end when start changes", () => {
+    const previous = {
+      actionType: "calendar_event" as const,
+      childName: "Harlee",
+      title: "Choir Concert",
+      startAt: "2026-10-20T18:00:00-05:00",
+      endAt: "2026-10-20T19:00:00-05:00",
+      allDay: false,
+      location: "Auditorium",
+      description: "Fall concert",
+      reminderOffsetsMinutes: [60],
+    };
+    const update = {
+      ...previous,
+      startAt: "2026-10-20T19:00:00-05:00",
+      endAt: null,
+      location: null,
+      description: "Concert begins one hour later.",
+      reminderOffsetsMinutes: [],
+    };
+
+    expect(mergeEventUpdatePayload(previous, update)).toEqual({
+      ...update,
+      endAt: null,
+      location: "Auditorium",
+      reminderOffsetsMinutes: [60],
+    });
+  });
+
+  it("prepends newest revisions above the existing event body", () => {
+    const description = prependEventRevision(
+      "UPDATE 2026-10-10:\nLocation changed.\n\nOriginal body",
+      "2026-10-17",
+      "Start changed.",
+    );
+
+    expect(description).toBe(
+      "UPDATE 2026-10-17:\nStart changed.\n\nUPDATE 2026-10-10:\nLocation changed.\n\nOriginal body",
+    );
+    expect(
+      describeEventRevision(
+        {
+          actionType: "calendar_event",
+          childName: "Harlee",
+          title: "Concert",
+          startAt: "2026-10-20T18:00:00-05:00",
+          endAt: null,
+          allDay: false,
+          location: "Gym",
+          description: "Original",
+          reminderOffsetsMinutes: [],
+        },
+        {
+          actionType: "calendar_event",
+          childName: "Harlee",
+          title: "Concert",
+          startAt: "2026-10-20T19:00:00-05:00",
+          endAt: null,
+          allDay: false,
+          location: "Auditorium",
+          description: "Updated",
+          reminderOffsetsMinutes: [],
+        },
+      ),
+    ).toContain("Start changed");
   });
 });
 

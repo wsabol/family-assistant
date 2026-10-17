@@ -7,8 +7,10 @@ export {
 export {
   proposedActionTypeSchema,
   proposedActionStatusSchema,
+  eventRelationshipSchema,
   type ProposedAction,
   type ProposedActionStatus,
+  type EventRelationship,
   type ProposedActionType,
   type CalendarLink,
 } from "./proposed-action.js";

@@ -24,6 +24,15 @@ export const proposedActionStatusSchema = z.enum([
 
 export type ProposedActionStatus = z.infer<typeof proposedActionStatusSchema>;
 
+export const eventRelationshipSchema = z.enum([
+  "same_event",
+  "event_update",
+  "related_event",
+  "distinct_event",
+]);
+
+export type EventRelationship = z.infer<typeof eventRelationshipSchema>;
+
 export interface ProposedAction {
   id: number;
   messageId: number;
@@ -40,6 +49,10 @@ export interface ProposedAction {
   ambiguityReason: string | null;
   interpretationSummary: string | null;
   sourceExcerpt: string | null;
+  matchedActionId: number | null;
+  eventRelationship: EventRelationship | null;
+  dedupeReasoning: string | null;
+  dedupeConfidence: number | null;
   originalPayloadJson: string;
   approvedPayloadJson: string | null;
   status: ProposedActionStatus;

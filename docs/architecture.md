@@ -10,7 +10,9 @@ flowchart LR
   Watch --> Queue[(SQLite messages)]
   Queue --> Work[work / AI]
   Work --> Proposed[(proposed_actions)]
-  Proposed --> AutoApprove{confidence 1.0?}
+  Proposed --> MemoryMatch{high-confidence internal repeat/update?}
+  MemoryMatch -->|yes| Approved[approved actions]
+  MemoryMatch -->|no| AutoApprove{confidence 1.0?}
   AutoApprove -->|yes| Approved[approved actions]
   AutoApprove -->|no| Review[review UI / CLI]
   Review -->|approved| Approved
@@ -24,14 +26,14 @@ flowchart LR
 | Command | Module | Responsibility |
 |---------|--------|----------------|
 | `watch` | `src/gmail/` | Poll Gmail, normalize messages, dedupe by `gmail_message_id`, queue for processing |
-| `work` | `src/ai/` | Claim queued messages, call OpenAI with structured output, store proposed actions, auto-approve confidence `1.0` proposals |
+| `work` | `src/ai/` | Extract actions, compare them contextually with completed internal actions, and auto-approve perfect-confidence new actions or high-confidence repeats and updates |
 | `review` | `src/review/` | Local web UI (localhost) and CLI approve/reject for actions that are not auto-approved; preserve original vs approved payloads |
-| `write-calendar` | `src/calendar/` | Create events only for `approved` actions; idempotent via `calendar_links` |
+| `write-calendar` | `src/calendar/` | Create approved events, link internal repeats, and apply matched updates with reverse-chronological revision notes |
 
 ### Boundaries
 
 - **Watcher** does not call AI or Calendar.
-- **Worker** does not write Calendar; it only auto-approves proposed actions when confidence is exactly `1.0`.
+- **Worker** does not write Calendar; matching and automatic approval use only internal completed actions as event memory.
 - **Calendar writer** only processes approved actions and skips actions that already have a calendar link.
 
 ## Data model
@@ -48,6 +50,7 @@ Audit fields:
 
 - `original_payload_json` — never overwritten (AI output at extraction time)
 - `approved_payload_json` — set when an action is auto-approved, or when a human approves or edits from the review UI
+- `matched_action_id`, `event_relationship`, and dedupe fields — preserve internal identity decisions and their reasoning
 
 ## Reprocessing
 

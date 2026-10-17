@@ -3,15 +3,17 @@
 [![CI](https://github.com/wsabol/family-assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/wsabol/family-assistant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Local family executive assistant that watches Gmail for school-related messages, extracts proposed calendar actions with AI, auto-approves perfect-confidence proposals, requires human review for the rest, and writes approved events to Google Calendar.
+Local family executive assistant that watches Gmail for school-related messages, extracts proposed calendar actions with AI, matches them against internal event memory, and writes approved events and updates to Google Calendar.
 
-**Philosophy:** reliable, transparent, and reversible. Perfect-confidence AI proposals can flow through automatically; everything else waits for review.
+**Philosophy:** reliable, transparent, and reversible. Perfect-confidence new proposals and high-confidence repeats or updates can flow through automatically; everything else waits for review.
 
 ## Features
 
 - Poll Gmail for messages with a label you choose
 - Extract events, deadlines, and reminders with OpenAI structured output
 - Auto-approve proposals when AI confidence is exactly `1.0`
+- Contextually match repeats and updates against completed internal actions
+- Automatically update matched events with reverse-chronological revision notes
 - Review and edit proposals in a local web UI (localhost only)
 - Create approved events on a dedicated school calendar
 - Full audit trail in SQLite (source email → proposed action → calendar event)
@@ -105,7 +107,7 @@ flowchart LR
   Write --> Cal[Google Calendar]
 ```
 
-Each stage has strict boundaries: the watcher never calls AI or Calendar; the worker never writes Calendar; only approved actions are written. Proposals with confidence exactly `1.0` are auto-approved by the worker. See [docs/architecture.md](docs/architecture.md).
+Each stage has strict boundaries: the watcher never calls AI or Calendar; the worker never writes Calendar; only approved actions are written. The worker auto-approves perfect-confidence new actions and high-confidence internal repeats or updates. See [docs/architecture.md](docs/architecture.md).
 
 ## Reprocessing
 

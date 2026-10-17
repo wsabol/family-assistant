@@ -32,6 +32,13 @@ export class CalendarLinksRepository {
     return row !== undefined;
   }
 
+  findByActionId(proposedActionId: number): CalendarLink | null {
+    const row = this.db
+      .prepare("SELECT * FROM calendar_links WHERE proposed_action_id = ?")
+      .get(proposedActionId) as CalendarLinkRow | undefined;
+    return row ? mapCalendarLinkRow(row) : null;
+  }
+
   create(
     proposedActionId: number,
     googleCalendarId: string,

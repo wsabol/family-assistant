@@ -1,4 +1,3 @@
-import type { calendar_v3 } from "googleapis";
 import type { Logger } from "pino";
 
 import { type AppConfig } from "../config.js";
@@ -11,9 +10,11 @@ import { isGoogleAuthError } from "../google/oauth.js";
 import { recordAuthFailure } from "../health/monitor.js";
 import {
   actionToApprovedPayload,
+  describeEventRevision,
   isCalendarWritableAction,
   mapToGoogleEvent,
-  mergeEventDescriptions,
+  mergeEventUpdatePayload,
+  prependEventRevision,
 } from "./event-mapper.js";
 import {
   applyMessageLabels,
@@ -27,6 +28,7 @@ import {
 export interface WriteCalendarResult {
   claimed: number;
   created: number;
+  updated: number;
   skipped: number;
   failed: number;
 }
@@ -59,6 +61,7 @@ export async function runCalendarWriter(
   const result: WriteCalendarResult = {
     claimed: 0,
     created: 0,
+    updated: 0,
     skipped: 0,
     failed: 0,
   };
@@ -79,7 +82,61 @@ export async function runCalendarWriter(
       continue;
     }
 
-    const payload = actionToApprovedPayload(action);
+    let payload = actionToApprovedPayload(action);
+
+    if (
+      action.eventRelationship === "same_event" &&
+      action.matchedActionId !== null
+    ) {
+      const matchedLink = linksRepo.findByActionId(action.matchedActionId);
+      if (!matchedLink) {
+        actionsRepo.markFailed(action.id);
+        result.failed += 1;
+        continue;
+      }
+
+      linksRepo.create(
+        action.id,
+        matchedLink.googleCalendarId,
+        matchedLink.googleEventId,
+        matchedLink.eventHtmlLink,
+      );
+      actionsRepo.markCompleted(action.id);
+      result.skipped += 1;
+
+      const duplicateMessage = messagesRepo.findById(action.messageId);
+      if (duplicateMessage) {
+        await markGmailProcessed(
+          config,
+          db,
+          duplicateMessage.gmailMessageId,
+          logger,
+        );
+      }
+      continue;
+    }
+
+    const matchedAction =
+      action.eventRelationship === "event_update" &&
+      action.matchedActionId !== null
+        ? actionsRepo.findById(action.matchedActionId)
+        : null;
+    const matchedLink = matchedAction
+      ? linksRepo.findByActionId(matchedAction.id)
+      : null;
+
+    if (action.eventRelationship === "event_update") {
+      if (!matchedAction || !matchedLink) {
+        actionsRepo.markFailed(action.id);
+        result.failed += 1;
+        continue;
+      }
+      payload = mergeEventUpdatePayload(
+        actionToApprovedPayload(matchedAction),
+        payload,
+      );
+      actionsRepo.setResolvedPayload(action.id, payload);
+    }
 
     if (!isCalendarWritableAction(payload)) {
       actionsRepo.markCompleted(action.id);
@@ -100,51 +157,48 @@ export async function runCalendarWriter(
 
     try {
       const eventBody = mapToGoogleEvent(payload, message, config.family);
-      const existingEvent = await findExistingCalendarEvent(
-        calendar,
-        calendarId,
-        eventBody,
-        payload,
-      );
 
-      if (existingEvent?.id) {
-        const mergedDescription = mergeEventDescriptions(
-          existingEvent.description,
-          eventBody.description,
+      if (matchedAction && matchedLink) {
+        const previousPayload = actionToApprovedPayload(matchedAction);
+        const currentEvent = await withRetry(() =>
+          calendar.events.get({
+            calendarId: matchedLink.googleCalendarId,
+            eventId: matchedLink.googleEventId,
+          }),
         );
-        if (mergedDescription !== (existingEvent.description ?? "")) {
-          await withRetry(() =>
-            calendar.events.patch({
-              calendarId,
-              eventId: existingEvent.id!,
-              requestBody: {
-                description: mergedDescription,
-              },
-              conferenceDataVersion: 0,
-              sendUpdates: "none",
-            }),
-          );
-        }
+        const revision = describeEventRevision(previousPayload, payload);
+        eventBody.description = prependEventRevision(
+          currentEvent.data.description ?? eventBody.description,
+          dateInTimeZone(new Date(), config.family.timezone),
+          revision,
+        );
+
+        const response = await withRetry(() =>
+          calendar.events.update({
+            calendarId: matchedLink.googleCalendarId,
+            eventId: matchedLink.googleEventId,
+            requestBody: eventBody,
+          }),
+        );
 
         linksRepo.create(
           action.id,
-          calendarId,
-          existingEvent.id,
-          existingEvent.htmlLink ?? null,
+          matchedLink.googleCalendarId,
+          matchedLink.googleEventId,
+          response.data.htmlLink ?? matchedLink.eventHtmlLink,
         );
         actionsRepo.markCompleted(action.id);
-        result.skipped += 1;
-
+        result.updated += 1;
         await markGmailProcessed(config, db, message.gmailMessageId, logger);
 
         logger.info(
           {
-            operation: "link_existing_event",
+            operation: "update_event",
             proposedActionId: action.id,
-            googleEventId: existingEvent.id,
-            gmailMessageId: message.gmailMessageId,
+            matchedActionId: matchedAction.id,
+            googleEventId: matchedLink.googleEventId,
           },
-          "Skipped duplicate calendar event",
+          "Updated calendar event",
         );
         continue;
       }
@@ -202,129 +256,15 @@ export async function runCalendarWriter(
   return result;
 }
 
-type CalendarClient = Awaited<ReturnType<typeof createCalendarClient>>;
-
-export async function findExistingCalendarEvent(
-  calendar: CalendarClient,
-  calendarId: string,
-  eventBody: ReturnType<typeof mapToGoogleEvent>,
-  payload: ApprovedActionPayload,
-): Promise<calendar_v3.Schema$Event | null> {
-  const window = getCalendarSearchWindow(eventBody);
-  const response = await withRetry(() =>
-    calendar.events.list({
-      calendarId,
-      singleEvents: true,
-      timeMin: window.timeMin,
-      timeMax: window.timeMax,
-      orderBy: "startTime",
-    }),
-  );
-
-  const events = response.data.items ?? [];
-  return (
-    events.find((event) => isMatchingCalendarEvent(event, eventBody, payload)) ??
-    null
-  );
-}
-
-function getCalendarSearchWindow(eventBody: ReturnType<typeof mapToGoogleEvent>): {
-  timeMin: string;
-  timeMax: string;
-} {
-  if (eventBody.start.date) {
-    const start = new Date(`${eventBody.start.date}T00:00:00.000Z`);
-    const end = eventBody.end.date
-      ? new Date(`${eventBody.end.date}T00:00:00.000Z`)
-      : new Date(start);
-    if (end <= start) {
-      end.setUTCDate(end.getUTCDate() + 1);
-    }
-    return {
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-    };
-  }
-
-  const start = new Date(eventBody.start.dateTime ?? "");
-  const end = new Date(eventBody.end.dateTime ?? eventBody.start.dateTime ?? "");
-  if (Number.isNaN(start.getTime())) {
-    throw new Error("Calendar event is missing a valid start time");
-  }
-  if (Number.isNaN(end.getTime()) || end <= start) {
-    end.setTime(start.getTime() + 60_000);
-  }
-
-  start.setMinutes(start.getMinutes() - 1);
-  end.setMinutes(end.getMinutes() + 1);
-
-  return {
-    timeMin: start.toISOString(),
-    timeMax: end.toISOString(),
-  };
-}
-
-export function isMatchingCalendarEvent(
-  event: calendar_v3.Schema$Event,
-  eventBody: ReturnType<typeof mapToGoogleEvent>,
-  payload: ApprovedActionPayload,
-): boolean {
-  if (event.status === "cancelled") {
-    return false;
-  }
-
-  if (eventBody.start.date) {
-    if (event.start?.date !== eventBody.start.date) {
-      return false;
-    }
-    if (eventBody.end.date && event.end?.date !== eventBody.end.date) {
-      return false;
-    }
-  } else if (
-    normalizeDateTime(event.start?.dateTime) !==
-      normalizeDateTime(eventBody.start.dateTime) ||
-    normalizeDateTime(event.end?.dateTime) !==
-      normalizeDateTime(eventBody.end.dateTime)
-  ) {
-    return false;
-  }
-
-  if (payload.childName) {
-    return eventMatchesChild(event, payload.childName);
-  }
-
-  return normalizeText(event.summary) === normalizeText(eventBody.summary);
-}
-
-function eventMatchesChild(
-  event: calendar_v3.Schema$Event,
-  childName: string,
-): boolean {
-  const child = normalizeText(childName);
-  const summary = normalizeText(event.summary);
-  const description = normalizeText(event.description);
-
-  return (
-    summary.startsWith(`${child} `) ||
-    summary === child ||
-    description.includes(`for ${child}`)
-  );
-}
-
-function normalizeDateTime(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toISOString();
-}
-
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+function dateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function markGmailProcessed(

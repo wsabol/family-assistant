@@ -149,6 +149,10 @@ function actionCard(
     ? `<p><strong>Source excerpt:</strong> ${escapeHtml(action.sourceExcerpt)}</p>`
     : "";
 
+  const eventMatch = action.eventRelationship
+    ? `<p><strong>Internal match:</strong> ${escapeHtml(action.eventRelationship)}${action.matchedActionId ? ` with action #${action.matchedActionId}` : ""}${action.dedupeConfidence === null ? "" : ` (${action.dedupeConfidence.toFixed(2)})`}<br />${escapeHtml(action.dedupeReasoning ?? "")}</p>`
+    : "";
+
   const readonly = action.status !== "awaiting_review";
 
   return `
@@ -158,6 +162,7 @@ function actionCard(
       ${ambiguity}
       ${interpretation}
       ${excerpt}
+      ${eventMatch}
       <form method="post" action="/actions/${action.id}/save">
         <label>Action type
           <select name="actionType" ${readonly ? "disabled" : ""}>
