@@ -2,6 +2,7 @@ import { escapeHtml, layout, type NavItem } from "../templates/layout.js";
 import type { Message } from "../../domain/message.js";
 import type { ProposedAction } from "../../domain/proposed-action.js";
 import type { FamilyConfig } from "../../config.js";
+import { DateTime } from 'luxon';
 
 const NAV: NavItem[] = [
   { href: "/", label: "Inbox" },
@@ -51,7 +52,7 @@ export function inboxPage(
 ): string {
   const rows =
     messages.length === 0
-      ? "<p class='muted'>No messages ingested yet.</p>"
+      ? "<p class='muted'>No messages require review.</p>"
       : `<table>
           <thead>
             <tr>
@@ -70,7 +71,7 @@ export function inboxPage(
               <tr>
                 <td><a href="/messages/${item.message.id}">${escapeHtml(item.message.subject)}</a></td>
                 <td>${escapeHtml(item.message.senderEmail)}</td>
-                <td>${escapeHtml(item.message.receivedAt)}</td>
+                <td>${DateTime.fromJSDate(new Date(item.message.receivedAt)).toLocaleString(DateTime.DATETIME_SHORT)}</td>
                 <td><span class="badge">${escapeHtml(item.message.status)}</span></td>
                 <td>${messageReviewBadge(item.actions, family)}</td>
                 <td>${item.actionCount} total / ${item.awaitingCount} awaiting</td>
@@ -115,7 +116,7 @@ export function messagePage(
         </form>
       </section>
       <section>
-        <h2>Proposed actions</h2>
+        <div class="card"><h2 style="margin: 0">Proposed actions</h2></div>
         ${actionCards || "<p class='muted'>No proposed actions.</p>"}
       </section>
     </div>`;

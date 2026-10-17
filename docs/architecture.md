@@ -1,6 +1,6 @@
 # Architecture
 
-Family Assistant is a local pipeline that turns labeled school emails into reviewed Google Calendar events. Each stage has a narrow responsibility; crossing boundaries (for example, the worker writing to Calendar) is intentionally prevented.
+Family Assistant is a local pipeline that turns labeled school emails into approved Google Calendar events. Each stage has a narrow responsibility; crossing boundaries (for example, the worker writing to Calendar) is intentionally prevented.
 
 ## Pipeline overview
 
@@ -10,8 +10,12 @@ flowchart LR
   Watch --> Queue[(SQLite messages)]
   Queue --> Work[work / AI]
   Work --> Proposed[(proposed_actions)]
-  Proposed --> Review[review UI / CLI]
-  Review -->|approved| Approved[approved actions]
+  Proposed --> MemoryMatch{high-confidence internal repeat/update?}
+  MemoryMatch -->|yes| Approved[approved actions]
+  MemoryMatch -->|no| AutoApprove{confidence 1.0?}
+  AutoApprove -->|yes| Approved[approved actions]
+  AutoApprove -->|no| Review[review UI / CLI]
+  Review -->|approved| Approved
   Approved --> Write[write-calendar]
   Write --> Calendar[Google Calendar]
   Write --> Links[(calendar_links)]
@@ -22,15 +26,15 @@ flowchart LR
 | Command | Module | Responsibility |
 |---------|--------|----------------|
 | `watch` | `src/gmail/` | Poll Gmail, normalize messages, dedupe by `gmail_message_id`, queue for processing |
-| `work` | `src/ai/` | Claim queued messages, call OpenAI with structured output, store proposed actions |
-| `review` | `src/review/` | Local web UI (localhost) and CLI approve/reject; preserve original vs approved payloads |
-| `write-calendar` | `src/calendar/` | Create events only for `approved` actions; idempotent via `calendar_links` |
+| `work` | `src/ai/` | Extract actions, compare them contextually with completed internal actions, and auto-approve perfect-confidence new actions or high-confidence repeats and updates |
+| `review` | `src/review/` | Local web UI (localhost) and CLI approve/reject for actions that are not auto-approved; preserve original vs approved payloads |
+| `write-calendar` | `src/calendar/` | Create approved events, link internal repeats, and apply matched updates with reverse-chronological revision notes |
 
 ### Boundaries
 
 - **Watcher** does not call AI or Calendar.
-- **Worker** does not write Calendar.
-- **Calendar writer** only processes explicitly approved actions and skips actions that already have a calendar link.
+- **Worker** does not write Calendar; matching and automatic approval use only internal completed actions as event memory.
+- **Calendar writer** only processes approved actions and skips actions that already have a calendar link.
 
 ## Data model
 
@@ -45,7 +49,8 @@ Key tables:
 Audit fields:
 
 - `original_payload_json` — never overwritten (AI output at extraction time)
-- `approved_payload_json` — set when a human approves or edits from the review UI
+- `approved_payload_json` — set when an action is auto-approved, or when a human approves or edits from the review UI
+- `matched_action_id`, `event_relationship`, and dedupe fields — preserve internal identity decisions and their reasoning
 
 ## Reprocessing
 

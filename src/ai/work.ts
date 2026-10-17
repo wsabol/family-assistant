@@ -13,6 +13,7 @@ export interface WorkResult {
   processed: number;
   failed: number;
   actionsCreated: number;
+  actionsAutoApproved: number;
 }
 
 export async function runWorker(
@@ -35,6 +36,7 @@ export async function runWorker(
     processed: 0,
     failed: 0,
     actionsCreated: 0,
+    actionsAutoApproved: 0,
   };
 
   const batchLimit = config.env.WORK_BATCH_LIMIT;
@@ -124,7 +126,7 @@ async function persistExtraction(
     extraction.emailClassification === "informational" &&
     extraction.actions.length === 0
   ) {
-    actionsRepo.create({
+    const input = {
       messageId,
       actionType: "informational",
       childName: null,
@@ -140,7 +142,9 @@ async function persistExtraction(
       interpretationSummary: extraction.summary,
       sourceExcerpt: extraction.summary.slice(0, 300),
       originalPayloadJson: rawJson,
-    });
+    } satisfies import("../db/repositories/proposed-actions.js").CreateProposedActionInput;
+    const actionId = actionsRepo.create(input);
+    autoApproveIfPerfectConfidence(actionsRepo, actionId, input, result);
     result.actionsCreated += 1;
     return;
   }
@@ -164,7 +168,7 @@ async function persistExtraction(
       (match.relationship === "same_event" ||
         match.relationship === "event_update");
 
-    actionsRepo.create({
+    const input = {
       messageId,
       actionType: action.actionType,
       childName: action.childName,
@@ -185,9 +189,42 @@ async function persistExtraction(
       dedupeReasoning: match.reasoning,
       dedupeConfidence: match.confidence,
       status: automatic ? "approved" : "awaiting_review",
-    });
+    } satisfies import("../db/repositories/proposed-actions.js").CreateProposedActionInput;
+    const actionId = actionsRepo.create(input);
+    if (automatic) {
+      result.actionsAutoApproved += 1;
+    } else if (
+      match.relationship !== "same_event" &&
+      match.relationship !== "event_update"
+    ) {
+      autoApproveIfPerfectConfidence(actionsRepo, actionId, input, result);
+    }
     result.actionsCreated += 1;
   }
+}
+
+function autoApproveIfPerfectConfidence(
+  actionsRepo: ProposedActionsRepository,
+  actionId: number,
+  input: import("../db/repositories/proposed-actions.js").CreateProposedActionInput,
+  result: WorkResult,
+): void {
+  if (input.confidence !== 1) {
+    return;
+  }
+
+  actionsRepo.approve(actionId, {
+    actionType: input.actionType,
+    childName: input.childName,
+    title: input.title,
+    startAt: input.startAt,
+    endAt: input.endAt,
+    allDay: input.allDay,
+    location: input.location,
+    description: input.description,
+    reminderOffsetsMinutes: input.reminderOffsetsMinutes,
+  });
+  result.actionsAutoApproved += 1;
 }
 
 export async function reprocessMessage(

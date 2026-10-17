@@ -33,7 +33,8 @@ export function createReviewApp(
         awaitingCount: actions.filter((a) => a.status === "awaiting_review").length,
         actions,
       };
-    });
+    })
+      .filter(item => item.awaitingCount > 0);
 
     res.type("html").send(inboxPage(messages, config.family));
   });

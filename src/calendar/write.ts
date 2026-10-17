@@ -139,11 +139,11 @@ export async function runCalendarWriter(
     }
 
     if (!isCalendarWritableAction(payload)) {
-      actionsRepo.markFailed(action.id);
-      result.failed += 1;
+      actionsRepo.markCompleted(action.id);
+      result.skipped += 1;
       logger.warn(
         { proposedActionId: action.id },
-        "Approved action is not calendar-writable",
+        "Approved action is not calendar-writable; skipped calendar creation",
       );
       continue;
     }
@@ -206,7 +206,9 @@ export async function runCalendarWriter(
       const response = await withRetry(() =>
         calendar.events.insert({
           calendarId,
+          conferenceDataVersion: 0,
           requestBody: eventBody,
+          sendUpdates: "none",
         }),
       );
 

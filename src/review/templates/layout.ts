@@ -28,8 +28,8 @@ export function layout(title: string, nav: NavItem[], body: string): string {
       header { background: #1f2933; color: #fff; padding: 1rem 1.5rem; }
       header nav a { color: #cbd5e1; margin-right: 1rem; text-decoration: none; }
       main { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-      .card { background: #fff; border: 1px solid #d9d3c7; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+      .grid { display: grid; grid-template-columns: 1fr 0.5fr; gap: 1rem; }
+      .card { background: #fff; border: 1px solid #d9d3c7; border-radius: 10px; padding: 1rem; margin-bottom: 1rem; overflow: scroll; }
       .muted-card { opacity: 0.7; }
       table { width: 100%; border-collapse: collapse; background: #fff; }
       th, td { border-bottom: 1px solid #e5e7eb; padding: 0.6rem; text-align: left; vertical-align: top; }
